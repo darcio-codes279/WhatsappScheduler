@@ -9,4 +9,4 @@
     "message": "Daily standup starts in 10 mins!",
     "cron": "50 8 * * 1-5"  // cron 2 Mon–Fri at 8:50 AM
   }
-]
+]# WhatsappScheduler
