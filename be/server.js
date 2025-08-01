@@ -164,7 +164,7 @@ app.post('/api/messages/send', upload.array('images', 5), async (req, res) => {
 });
 
 // Schedule a message
-app.post('/api/messages/schedule', async (req, res) => {
+app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) => {
     try {
         const { groupName, message, cronTime, description, endDate, maxOccurrences } = req.body;
 
