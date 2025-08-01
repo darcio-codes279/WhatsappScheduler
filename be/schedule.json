@@ -20,5 +20,17 @@
     "currentOccurrences": 1,
     "createdAt": "2025-07-31T17:47:42.444Z",
     "createdBy": "447722559905@c.us"
+  },
+  {
+    "id": "1754067003180",
+    "groupName": "TEST_WA_BOT",
+    "message": "test 1",
+    "cron": "51 17 1 8 *",
+    "description": "",
+    "endDate": null,
+    "maxOccurrences": null,
+    "currentOccurrences": 1,
+    "createdAt": "2025-08-01T16:50:03.180Z",
+    "createdBy": "447722559905@c.us"
   }
 ]
