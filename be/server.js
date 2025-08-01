@@ -48,8 +48,22 @@ const initializeClient = () => {
     client.initialize();
 };
 
-// Initialize client on startup
-initializeClient();
+// Start server first
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 API Server running on port ${PORT}`);
+    console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
+
+    // Initialize WhatsApp client after server starts
+    setTimeout(() => {
+        console.log('🔄 Initializing WhatsApp client...');
+        initializeClient();
+    }, 1000);
+});
+
+// Add error handling for server startup
+app.on('error', (err) => {
+    console.error('❌ Server error:', err);
+});
 
 // Helper function to load schedule data
 const loadScheduleData = () => {
@@ -100,7 +114,7 @@ app.get('/api/whatsapp/status', (req, res) => {
 });
 
 // Send immediate message
-app.post('/api/messages/send', async (req, res) => {
+app.post('/api/messages/send', upload.array('images', 5), async (req, res) => {
     try {
         const { groupName, message } = req.body;
 
@@ -382,10 +396,23 @@ app.use((error, req, res, next) => {
     });
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`🚀 API Server running on port ${PORT}`);
-    console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
+// Server is now started above after client initialization
+
+// Graceful shutdown handlers
+process.on('SIGINT', async () => {
+    console.log('\n🔄 Gracefully shutting down...');
+    if (client) {
+        await client.destroy();
+    }
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    console.log('\n🔄 Gracefully shutting down...');
+    if (client) {
+        await client.destroy();
+    }
+    process.exit(0);
 });
 
 module.exports = app;
