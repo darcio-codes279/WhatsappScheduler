@@ -32,6 +32,15 @@ export default function Dashboard() {
     details?: string
   }>>([])
   const [groups, setGroups] = useState([])
+  const [editingMessage, setEditingMessage] = useState<{
+    id: string
+    content: string
+    scheduledTime: Date
+    groupName: string
+    occurrences?: number
+    recurrenceType?: 'once' | 'weekly'
+    weekdays?: number[]
+  } | null>(null)
   const { toast } = useToast()
 
   // Fetch WhatsApp status
@@ -365,6 +374,138 @@ export default function Dashboard() {
     }
   }
 
+  const handleEditScheduled = (message: {
+    id: string
+    content: string
+    scheduledTime: Date
+    groupName: string
+    occurrences?: number
+    recurrenceType?: 'once' | 'weekly'
+    weekdays?: number[]
+  }) => {
+    setEditingMessage({
+      id: message.id,
+      content: message.content,
+      scheduledTime: message.scheduledTime,
+      groupName: message.groupName,
+      occurrences: message.occurrences || 1,
+      recurrenceType: message.recurrenceType || 'once',
+      weekdays: message.weekdays || []
+    });
+  }
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+  }
+
+  const handleUpdateScheduled = async (data: {
+    id: string
+    content: string
+    groupName: string
+    scheduledTime: string
+    occurrences: number
+    recurrenceType: 'once' | 'weekly'
+    weekdays?: number[]
+    images?: File[]
+  }) => {
+    try {
+      const formData = new FormData()
+      formData.append('groupName', data.groupName)
+      formData.append('message', data.content)
+      formData.append('cronTime', convertDateTimeToCron(new Date(data.scheduledTime)))
+      formData.append('occurrences', data.occurrences.toString())
+      formData.append('recurrenceType', data.recurrenceType)
+
+      if (data.weekdays) {
+        formData.append('weekdays', JSON.stringify(data.weekdays))
+      }
+
+      const description = data.recurrenceType === 'weekly'
+        ? `Weekly on ${data.weekdays?.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${data.occurrences === -1 ? ' (infinite)' : ` (${data.occurrences} weeks)`}`
+        : (data.occurrences === -1 ? 'Infinite occurrences' : (data.occurrences > 1 ? `Repeat ${data.occurrences} times` : ''))
+
+      formData.append('description', description)
+
+      // Add images if any
+      if (data.images && data.images.length > 0) {
+        data.images.forEach((image) => {
+          formData.append('images', image)
+        })
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/messages/scheduled/${data.id}`, {
+        method: 'PUT',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Refresh scheduled messages
+        fetchScheduledMessages()
+        setEditingMessage(null)
+
+        const scheduleText = data.recurrenceType === 'weekly'
+          ? `weekly on ${data.weekdays?.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${data.occurrences === -1 ? ' (infinite)' : ` for ${data.occurrences} weeks`}`
+          : (data.occurrences === -1 ? ' (infinite times)' : (data.occurrences > 1 ? ` (${data.occurrences} times)` : ''))
+
+        const imageText = data.images && data.images.length > 0 ? ` with ${data.images.length} image${data.images.length > 1 ? 's' : ''}` : ''
+
+        addActivityLog({
+          message: `Scheduled message updated for ${data.groupName}${imageText} ${data.recurrenceType === 'weekly' ? scheduleText : `on ${new Date(data.scheduledTime).toLocaleString()}${scheduleText}`}`,
+          type: "scheduled",
+          status: "success"
+        })
+
+        toast({
+          title: "Message Updated",
+          description: data.recurrenceType === 'weekly'
+            ? `Your message${imageText} for ${data.groupName} has been updated to send ${scheduleText} starting ${new Date(data.scheduledTime).toLocaleString()}`
+            : `Your message${imageText} for ${data.groupName} has been updated to send on ${new Date(data.scheduledTime).toLocaleString()}${scheduleText}`,
+        })
+      } else {
+        // Check if it's a session-related error
+        if (result.details && (result.details.includes('Session closed') || result.details.includes('Protocol error'))) {
+          throw new Error('WhatsApp session disconnected. Please wait for reconnection and try again.')
+        }
+        throw new Error(result.error || 'Failed to update message')
+      }
+    } catch (error) {
+      console.error('Error updating message:', error as Error)
+      const errorMessage = (error as Error).message
+
+      // Check if it's a session-related error
+      const isSessionError = errorMessage.includes('Session closed') ||
+        errorMessage.includes('Protocol error') ||
+        errorMessage.includes('session disconnected')
+
+      addActivityLog({
+        message: `Failed to update scheduled message for ${data.groupName}: ${errorMessage}`,
+        type: "error",
+        status: "error"
+      })
+
+      toast({
+        title: isSessionError ? "Connection Issue" : "Update failed",
+        description: isSessionError
+          ? "WhatsApp session disconnected. The system will attempt to reconnect automatically. Please try again in a few moments."
+          : errorMessage,
+        variant: "destructive",
+      })
+
+      // If it's a session error, try to trigger a reconnection
+      if (isSessionError) {
+        try {
+          await fetch(`${API_BASE_URL}/api/whatsapp/reconnect`, {
+            method: 'POST'
+          })
+        } catch (reconnectError) {
+          console.error('Failed to trigger reconnection:', reconnectError)
+        }
+      }
+    }
+  }
+
   const handlePromoteBot = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/groups/promote-bot`, {
@@ -449,14 +590,21 @@ export default function Dashboard() {
             <MessageComposer
               onSchedule={handleScheduleMessage}
               onSendNow={handleSendNow}
+              onUpdate={handleUpdateScheduled}
               isConnected={isWhatsAppConnected}
               groups={groups}
+              editingMessage={editingMessage}
+              onCancelEdit={handleCancelEdit}
             />
           </div>
 
           {/* Scheduled Messages - Top right */}
           <div className="lg:col-span-4 lg:row-span-1 min-h-0">
-            <ScheduledMessages messages={scheduledMessages} onDelete={handleDeleteScheduled} />
+            <ScheduledMessages
+              messages={scheduledMessages}
+              onDelete={handleDeleteScheduled}
+              onEdit={handleEditScheduled}
+            />
           </div>
 
           {/* Activity Log - Bottom right */}

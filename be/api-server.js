@@ -583,6 +583,82 @@ app.delete('/api/messages/scheduled/:id', (req, res) => {
     }
 });
 
+// Update a scheduled message
+app.put('/api/messages/scheduled/:id', upload.array('images', 10), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { groupName, message, cronTime, description } = req.body;
+        const images = req.files || [];
+
+        // Validate required fields
+        if (!groupName || !message || !cronTime) {
+            return res.status(400).json({
+                error: 'Missing required fields: groupName, message, and cronTime are required'
+            });
+        }
+
+        // Load existing schedule data
+        const scheduleData = loadScheduleData();
+        const taskIndex = scheduleData.findIndex(task => task.id === id);
+
+        if (taskIndex === -1) {
+            return res.status(404).json({
+                error: 'Scheduled message not found'
+            });
+        }
+
+        const existingTask = scheduleData[taskIndex];
+
+        // Clean up old image files if they exist
+        if (existingTask.imagePaths && existingTask.imagePaths.length > 0) {
+            existingTask.imagePaths.forEach(imagePath => {
+                if (fs.existsSync(imagePath)) {
+                    fs.unlinkSync(imagePath);
+                }
+            });
+        }
+
+        // Store new image paths for scheduled messages
+        const imagePaths = images.map(image => {
+            const scheduledImagePath = path.join('./uploads/scheduled', `${Date.now()}-${image.originalname}`);
+            // Create scheduled directory if it doesn't exist
+            const scheduledDir = path.dirname(scheduledImagePath);
+            if (!fs.existsSync(scheduledDir)) {
+                fs.mkdirSync(scheduledDir, { recursive: true });
+            }
+            // Move file to scheduled directory
+            fs.renameSync(image.path, scheduledImagePath);
+            return scheduledImagePath;
+        });
+
+        // Update the task
+        const updatedTask = {
+            ...existingTask,
+            groupName,
+            message,
+            cron: cronTime,
+            description: description || '',
+            updatedAt: new Date().toISOString(),
+            imagePaths: imagePaths
+        };
+
+        // Update in schedule data
+        scheduleData[taskIndex] = updatedTask;
+        saveScheduleData(scheduleData);
+
+        res.json({
+            success: true,
+            message: 'Scheduled message updated successfully',
+            task: updatedTask
+        });
+    } catch (error) {
+        res.status(500).json({
+            error: 'Failed to update scheduled message',
+            details: error.message
+        });
+    }
+});
+
 // Get available groups
 app.get('/api/groups', async (req, res) => {
     try {

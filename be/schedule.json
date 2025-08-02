@@ -1,13 +1,21 @@
 [
   {
+    "id": "1754000000001",
     "groupName": "Family Chat",
     "message": "Good morning, fam! ☀️",
-    "cron": "0 9 * * *"
+    "cron": "0 9 * * *",
+    "description": "",
+    "createdAt": "2025-08-01T00:00:00.001Z",
+    "createdBy": "system"
   },
   {
+    "id": "1754000000002",
     "groupName": "Work Group",
     "message": "Daily standup starts in 10 mins!",
-    "cron": "50 8 * * 1-5"
+    "cron": "50 8 * * 1-5",
+    "description": "",
+    "createdAt": "2025-08-01T00:00:00.002Z",
+    "createdBy": "system"
   },
   {
     "id": "1753984062444",

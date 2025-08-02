@@ -41,8 +41,8 @@ export function WhatsAppStatus({ isConnected, onConnectionChange, onRefresh, onP
           description: "Successfully connected to WhatsApp Web",
         })
       } else {
-        // If not connected, show a message that QR scanning is needed
-        setError("WhatsApp not connected. Please scan QR code in the backend terminal.")
+        // If not connected, try to get QR code
+        await fetchQrCode()
       }
     } catch (error) {
       console.error('Error checking WhatsApp status:', error)
@@ -50,6 +50,25 @@ export function WhatsAppStatus({ isConnected, onConnectionChange, onRefresh, onP
       onConnectionChange(false)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchQrCode = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/whatsapp/qr`)
+      const data = await response.json()
+
+      if (data.hasQr && data.qrDataUrl) {
+        setQrCode(data.qrDataUrl)
+        setError(null)
+      } else {
+        setQrCode(null)
+        setError(data.message || "WhatsApp not connected. Please scan QR code.")
+      }
+    } catch (error) {
+      console.error('Error fetching QR code:', error)
+      setQrCode(null)
+      setError('Failed to fetch QR code')
     }
   }
 
@@ -136,32 +155,57 @@ export function WhatsAppStatus({ isConnected, onConnectionChange, onRefresh, onP
             )}
           </div>
         ) : (
-          <div className="text-center space-y-2">
+          <div className="text-center space-y-3">
             <div className="flex items-center justify-center gap-2 text-red-400">
               <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5" />
               <span className="text-sm font-medium">Not Connected</span>
             </div>
-            <div className="space-y-1">
-              <p className="text-xs text-gray-400">
-                {error || "WhatsApp is not connected"}
-              </p>
-              <div className="text-xs text-gray-500 bg-neutral-800 p-2 rounded text-left hidden sm:block">
-                <p className="font-medium mb-1">To connect:</p>
-                <ol className="list-decimal list-inside space-y-0.5 text-xs">
-                  <li>Start backend server</li>
-                  <li>Scan QR in terminal</li>
-                  <li>Use WhatsApp → Linked Devices</li>
-                </ol>
+
+            {/* QR Code Display */}
+            {qrCode ? (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-400">Scan QR code with WhatsApp:</p>
+                <div className="flex justify-center">
+                  <img
+                    src={qrCode}
+                    alt="WhatsApp QR Code"
+                    className="w-32 h-32 sm:w-40 sm:h-40 border border-neutral-600 rounded-lg bg-white p-2"
+                  />
+                </div>
+                <div className="text-xs text-gray-500 bg-neutral-800 p-2 rounded text-left">
+                  <p className="font-medium mb-1">How to scan:</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-xs">
+                    <li>Open WhatsApp on your phone</li>
+                    <li>Go to Settings → Linked Devices</li>
+                    <li>Tap "Link a Device"</li>
+                    <li>Scan this QR code</li>
+                  </ol>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-xs text-gray-400">
+                  {error || "WhatsApp is not connected"}
+                </p>
+                <div className="text-xs text-gray-500 bg-neutral-800 p-2 rounded text-left hidden sm:block">
+                  <p className="font-medium mb-1">To connect:</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-xs">
+                    <li>Start backend server</li>
+                    <li>Wait for QR code to appear</li>
+                    <li>Use WhatsApp → Linked Devices</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+
             <Button
               onClick={handleRefresh}
               variant="outline"
               size="sm"
-              className="border-neutral-700 hover:bg-neutral-800 bg-transparent text-xs h-7"
+              className="border-neutral-700 hover:bg-neutral-800 bg-transparent text-xs h-7 text-white"
             >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              Check Again
+              <RefreshCw className="h-3 w-3 mr-1 " />
+              {qrCode ? 'Refresh QR' : 'Check Again'}
             </Button>
           </div>
         )}

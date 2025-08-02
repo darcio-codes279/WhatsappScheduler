@@ -31,10 +31,19 @@ interface ScheduledMessagesProps {
     weekdays?: number[]
   }>
   onDelete: (id: string) => void
+  onEdit: (message: {
+    id: string
+    content: string
+    scheduledTime: Date
+    groupName: string
+    occurrences?: number
+    recurrenceType?: 'once' | 'weekly'
+    weekdays?: number[]
+  }) => void
   isLoading?: boolean
 }
 
-export function ScheduledMessages({ messages, onDelete, isLoading }: ScheduledMessagesProps) {
+export function ScheduledMessages({ messages, onDelete, onEdit, isLoading }: ScheduledMessagesProps) {
   const formatScheduledTime = (date: Date) => {
     // Check if date is valid
     if (!date || isNaN(date.getTime())) {
@@ -171,6 +180,15 @@ export function ScheduledMessages({ messages, onDelete, isLoading }: ScheduledMe
                     <Button
                       size="sm"
                       variant="ghost"
+                      onClick={() => onEdit({
+                        id: message.id,
+                        content: message.content,
+                        scheduledTime: message.scheduledTime,
+                        groupName: message.groupName,
+                        occurrences: message.occurrences,
+                        recurrenceType: message.recurrenceType,
+                        weekdays: message.weekdays
+                      })}
                       className="h-6 px-2 text-neutral-400 hover:text-white hover:bg-neutral-700 text-xs"
                     >
                       <Edit className="h-3 w-3 mr-1" />

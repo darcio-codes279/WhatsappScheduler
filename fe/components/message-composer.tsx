@@ -32,8 +32,28 @@ interface MessageComposerProps {
     weekdays?: number[]
     images?: File[]
   }) => void
+  onUpdate?: (data: {
+    id: string
+    content: string
+    groupName: string
+    scheduledTime: string
+    occurrences: number
+    recurrenceType: 'once' | 'weekly'
+    weekdays?: number[]
+    images?: File[]
+  }) => void
   groups: Array<{ id: string; name: string; memberCount: number }>
   isConnected: boolean
+  editingMessage?: {
+    id: string
+    content: string
+    scheduledTime: Date
+    groupName: string
+    occurrences?: number
+    recurrenceType?: 'once' | 'weekly'
+    weekdays?: number[]
+  } | null
+  onCancelEdit?: () => void
 }
 
 // Add this interface near the top after the existing interfaces
@@ -79,7 +99,7 @@ const mockGroups: Group[] = [
 ]
 
 // Update the state variables - replace recipient with selectedGroup
-export function MessageComposer({ onSendNow, onSchedule, groups, isConnected }: MessageComposerProps) {
+export function MessageComposer({ onSendNow, onSchedule, onUpdate, groups, isConnected, editingMessage, onCancelEdit }: MessageComposerProps) {
   const [message, setMessage] = useState("")
   const [selectedGroup, setSelectedGroup] = useState("")
   const [date, setDate] = useState<Date>()
@@ -108,6 +128,27 @@ export function MessageComposer({ onSendNow, onSchedule, groups, isConnected }: 
   useEffect(() => {
     localStorage.setItem('whatsapp-bot-favorites', JSON.stringify(favoriteGroups))
   }, [favoriteGroups])
+
+  // Populate form when editing a message
+  useEffect(() => {
+    if (editingMessage) {
+      console.log('Editing message:', editingMessage)
+      console.log('Message ID:', editingMessage.id)
+      setMessage(editingMessage.content)
+      setSelectedGroup(editingMessage.groupName)
+      setDate(editingMessage.scheduledTime)
+
+      // Extract time from scheduledTime
+      const timeString = editingMessage.scheduledTime.toTimeString().slice(0, 5)
+      setTime(timeString)
+
+      setOccurrences(editingMessage.occurrences || 1)
+      setIsInfinite(editingMessage.occurrences === -1)
+      setRecurrenceType(editingMessage.recurrenceType || 'once')
+      setSelectedWeekdays(editingMessage.weekdays || [])
+      setIsScheduleModalOpen(true)
+    }
+  }, [editingMessage])
 
   // Toggle favorite status of a group
   const toggleFavorite = (groupId: string) => {
@@ -201,6 +242,9 @@ export function MessageComposer({ onSendNow, onSchedule, groups, isConnected }: 
     setErrors({})
     setUploadedImages([])
     setImagePreviews([])
+    if (onCancelEdit) {
+      onCancelEdit()
+    }
   }
 
   // Text formatting functions
@@ -297,15 +341,31 @@ export function MessageComposer({ onSendNow, onSchedule, groups, isConnected }: 
       images: uploadedImages
     }
 
-    onSchedule({
-      content: scheduleData.message,
-      groupName: scheduleData.group,
-      scheduledTime: scheduleData.scheduledTime.toISOString(),
-      occurrences: scheduleData.occurrences,
-      recurrenceType: scheduleData.recurrenceType,
-      weekdays: scheduleData.weekdays,
-      images: uploadedImages
-    })
+    if (editingMessage && onUpdate) {
+      // Update existing message
+      console.log('Updating message with ID:', editingMessage.id)
+      onUpdate({
+        id: editingMessage.id,
+        content: scheduleData.message,
+        groupName: scheduleData.group,
+        scheduledTime: scheduleData.scheduledTime.toISOString(),
+        occurrences: scheduleData.occurrences,
+        recurrenceType: scheduleData.recurrenceType,
+        weekdays: scheduleData.weekdays,
+        images: uploadedImages
+      })
+    } else {
+      // Create new message
+      onSchedule({
+        content: scheduleData.message,
+        groupName: scheduleData.group,
+        scheduledTime: scheduleData.scheduledTime.toISOString(),
+        occurrences: scheduleData.occurrences,
+        recurrenceType: scheduleData.recurrenceType,
+        weekdays: scheduleData.weekdays,
+        images: uploadedImages
+      })
+    }
 
     // Reset form and close modal
     clearForm()
@@ -582,9 +642,56 @@ export function MessageComposer({ onSendNow, onSchedule, groups, isConnected }: 
             </DialogTrigger>
             <DialogContent className="bg-neutral-900 border-neutral-800 text-white">
               <DialogHeader>
-                <DialogTitle>Schedule Message</DialogTitle>
+                <DialogTitle>{editingMessage ? 'Edit Scheduled Message' : 'Schedule Message'}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                {/* Message Content Section */}
+                <div className="space-y-2">
+                  <Label htmlFor="modal-message">Message Content</Label>
+                  <Textarea
+                    id="modal-message"
+                    placeholder="Type your message here..."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    className="bg-neutral-800 border-neutral-700 text-white resize-none min-h-[100px]"
+                    maxLength={4096}
+                  />
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-400">
+                      {message.length}/4096 characters
+                    </span>
+                    {errors.message && <p className="text-xs text-red-400">{errors.message}</p>}
+                  </div>
+                </div>
+
+                {/* Group Selection Section */}
+                <div className="space-y-2">
+                  <Label>Select Group</Label>
+                  <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                    <SelectTrigger className={cn(
+                      "bg-neutral-800 border-neutral-700 text-white",
+                      errors.group && "border-red-500"
+                    )}>
+                      <SelectValue placeholder="Choose a group..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-neutral-800 border-neutral-700">
+                      {groups.map((group) => (
+                        <SelectItem
+                          key={group.id}
+                          value={group.name}
+                          className="text-white hover:bg-neutral-700"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4" />
+                            <span>{group.name}</span>
+                            <span className="text-xs text-gray-400">({group.memberCount} members)</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.group && <p className="text-sm text-red-400">{errors.group}</p>}
+                </div>
                 <div className="space-y-2">
                   <Label>Select Date</Label>
                   <Popover>
@@ -739,13 +846,16 @@ export function MessageComposer({ onSendNow, onSchedule, groups, isConnected }: 
                 <div className="flex gap-3 pt-4">
                   <Button
                     variant="outline"
-                    onClick={() => setIsScheduleModalOpen(false)}
+                    onClick={() => {
+                      setIsScheduleModalOpen(false)
+                      clearForm()
+                    }}
                     className="flex-1 border-neutral-700 hover:bg-neutral-800"
                   >
                     Cancel
                   </Button>
                   <Button onClick={handleSchedule} className="flex-1 bg-[#05c997] hover:bg-[#04b085]">
-                    Schedule Message
+                    {editingMessage ? 'Update Message' : 'Schedule Message'}
                   </Button>
                 </div>
               </div>
