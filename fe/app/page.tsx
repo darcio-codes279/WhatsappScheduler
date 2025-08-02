@@ -212,21 +212,45 @@ export default function Dashboard() {
             : `Your message${imageText} will be sent to ${data.groupName} on ${new Date(data.scheduledTime).toLocaleString()}${scheduleText}`,
         })
       } else {
+        // Check if it's a session-related error
+        if (result.details && (result.details.includes('Session closed') || result.details.includes('Protocol error'))) {
+          throw new Error('WhatsApp session disconnected. Please wait for reconnection and try again.')
+        }
         throw new Error(result.error || 'Failed to schedule message')
       }
     } catch (error) {
       console.error('Error scheduling message:', error as Error)
+      const errorMessage = (error as Error).message
+
+      // Check if it's a session-related error
+      const isSessionError = errorMessage.includes('Session closed') ||
+        errorMessage.includes('Protocol error') ||
+        errorMessage.includes('session disconnected')
+
       addActivityLog({
-        message: `Failed to schedule message for ${data.groupName}: ${(error as Error).message}`,
+        message: `Failed to schedule message for ${data.groupName}: ${errorMessage}`,
         type: "error",
         status: "error"
       })
 
       toast({
-        title: "Scheduling failed",
-        description: (error as Error).message,
+        title: isSessionError ? "Connection Issue" : "Scheduling failed",
+        description: isSessionError
+          ? "WhatsApp session disconnected. The system will attempt to reconnect automatically. Please try again in a few moments."
+          : errorMessage,
         variant: "destructive",
       })
+
+      // If it's a session error, try to trigger a reconnection
+      if (isSessionError) {
+        try {
+          await fetch(`${API_BASE_URL}/api/whatsapp/reconnect`, {
+            method: 'POST'
+          })
+        } catch (reconnectError) {
+          console.error('Failed to trigger reconnection:', reconnectError)
+        }
+      }
     }
   }
 

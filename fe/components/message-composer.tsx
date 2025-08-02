@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Send, Clock, CalendarIcon, Users, Infinity, Image, Bold, Italic, Underline, Strikethrough, X } from "lucide-react"
+import { Send, Clock, CalendarIcon, Users, Infinity, Image, Bold, Italic, Underline, Strikethrough, X, Star } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -92,8 +92,31 @@ export function MessageComposer({ onSendNow, onSchedule, groups, isConnected }: 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  const [favoriteGroups, setFavoriteGroups] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Load favorites from localStorage on component mount
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem('whatsapp-bot-favorites')
+    if (savedFavorites) {
+      setFavoriteGroups(JSON.parse(savedFavorites))
+    }
+  }, [])
+
+  // Save favorites to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('whatsapp-bot-favorites', JSON.stringify(favoriteGroups))
+  }, [favoriteGroups])
+
+  // Toggle favorite status of a group
+  const toggleFavorite = (groupId: string) => {
+    setFavoriteGroups(prev =>
+      prev.includes(groupId)
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId]
+    )
+  }
 
   // Update the validation functions to use selectedGroup instead of recipient
   const validateForm = () => {
@@ -318,20 +341,91 @@ export function MessageComposer({ onSendNow, onSchedule, groups, isConnected }: 
             </SelectTrigger>
             <SelectContent className="bg-neutral-800 border-neutral-700">
               {groups.length > 0 ? (
-                groups.map((group) => (
-                  <SelectItem
-                    key={group.id}
-                    value={group.id}
-                    className="text-white hover:bg-neutral-700 focus:bg-neutral-700"
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex flex-col items-start">
-                        <span className="font-medium">{group.name}</span>
-                        <span className="text-xs text-gray-400">{group.memberCount || 0} members</span>
+                <>
+                  {/* Favorites Section */}
+                  {favoriteGroups.length > 0 && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-yellow-400 border-b border-neutral-700">
+                        ⭐ Favorites
                       </div>
-                    </div>
-                  </SelectItem>
-                ))
+                      {groups
+                        .filter(group => favoriteGroups.includes(group.id))
+                        .map((group) => (
+                          <SelectItem
+                            key={group.id}
+                            value={group.id}
+                            className="text-white hover:bg-neutral-700 focus:bg-neutral-700"
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <div className="flex flex-col items-start">
+                                <div className="flex items-center gap-2">
+                                  <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
+                                  <span className="font-medium">{group.name}</span>
+                                </div>
+                                <span className="text-xs text-gray-400 ml-5">{group.memberCount || 0} members</span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-neutral-600"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  toggleFavorite(group.id)
+                                }}
+                              >
+                                <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
+                              </Button>
+                            </div>
+                          </SelectItem>
+                        ))
+                      }
+                      <div className="border-b border-neutral-700 my-1" />
+                    </>
+                  )}
+
+                  {/* All Groups Section */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-gray-400">
+                    All Groups
+                  </div>
+                  {groups.map((group) => (
+                    <SelectItem
+                      key={group.id}
+                      value={group.id}
+                      className="text-white hover:bg-neutral-700 focus:bg-neutral-700"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex flex-col items-start">
+                          <div className="flex items-center gap-2">
+                            {favoriteGroups.includes(group.id) ? (
+                              <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
+                            ) : (
+                              <div className="h-3 w-3" />
+                            )}
+                            <span className="font-medium">{group.name}</span>
+                          </div>
+                          <span className="text-xs text-gray-400 ml-5">{group.memberCount || 0} members</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 hover:bg-neutral-600"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            toggleFavorite(group.id)
+                          }}
+                        >
+                          {favoriteGroups.includes(group.id) ? (
+                            <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
+                          ) : (
+                            <Star className="h-3 w-3 text-gray-400" />
+                          )}
+                        </Button>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </>
               ) : (
                 <SelectItem value="no-groups" disabled className="text-gray-400">
                   No groups available

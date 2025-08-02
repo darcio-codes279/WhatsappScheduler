@@ -62,16 +62,25 @@ const initializeClient = () => {
         isClientReady = false;
 
         // Attempt to reconnect after a delay
-        console.log('🔄 Attempting to reconnect in 5 seconds...');
+        console.log('🔄 Attempting to reconnect in 10 seconds...');
         setTimeout(() => {
+            console.log('🔄 Starting reconnection process...');
             initializeClient();
-        }, 5000);
+        }, 10000);
     });
 
     client.on('auth_failure', (msg) => {
         console.error('❌ Authentication failed:', msg);
         isClientReady = false;
+
+        // Try to reconnect after auth failure
+        console.log('🔄 Attempting to reconnect after auth failure in 15 seconds...');
+        setTimeout(() => {
+            initializeClient();
+        }, 15000);
     });
+
+    // Removed duplicate auth_failure handler - now handled above with reconnection logic
 
     client.on('change_state', (state) => {
         console.log('🔄 WhatsApp state changed:', state);
@@ -174,6 +183,48 @@ app.post('/api/whatsapp/reconnect', (req, res) => {
         console.error('❌ Manual reconnection failed:', error);
         res.status(500).json({
             error: 'Failed to initiate reconnection',
+            details: error.message
+        });
+    }
+});
+
+// Session health check endpoint
+app.get('/api/whatsapp/health', async (req, res) => {
+    try {
+        let sessionHealth = {
+            isReady: isClientReady,
+            hasClient: !!client,
+            hasInfo: !!(client && client.info),
+            timestamp: new Date().toISOString()
+        };
+
+        // Try to perform a simple operation to verify session is actually working
+        if (isClientReady && client) {
+            try {
+                await client.getState();
+                sessionHealth.canPerformOperations = true;
+            } catch (testError) {
+                sessionHealth.canPerformOperations = false;
+                sessionHealth.testError = testError.message;
+
+                // If we get a session error, mark as not ready
+                if (testError.message.includes('Session closed') || testError.message.includes('Protocol error')) {
+                    isClientReady = false;
+                    sessionHealth.isReady = false;
+                }
+            }
+        } else {
+            sessionHealth.canPerformOperations = false;
+        }
+
+        res.json({
+            success: true,
+            health: sessionHealth
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to check session health',
             details: error.message
         });
     }
@@ -295,22 +346,62 @@ app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) =
             });
         }
 
-        // Find the group
-        const group = await findGroupByName(client, groupName);
-        if (!group) {
-            return res.status(404).json({
-                error: `Group "${groupName}" not found`
+        // Check if client session is still valid before proceeding
+        try {
+            if (!client || !client.info) {
+                throw new Error('WhatsApp session is not available');
+            }
+        } catch (sessionError) {
+            console.error('Session validation failed:', sessionError.message);
+            isClientReady = false;
+            return res.status(503).json({
+                error: 'WhatsApp session disconnected. Please wait for reconnection and try again.',
+                details: sessionError.message
             });
         }
 
-        // Check if current user is admin
-        const currentUser = client.info.wid._serialized;
-        const isAdmin = await isUserAdmin(client, group, currentUser);
+        // Find the group with error handling
+        let group;
+        try {
+            group = await findGroupByName(client, groupName);
+            if (!group) {
+                return res.status(404).json({
+                    error: `Group "${groupName}" not found`
+                });
+            }
+        } catch (groupError) {
+            console.error('Error finding group:', groupError.message);
+            if (groupError.message.includes('Session closed') || groupError.message.includes('Protocol error')) {
+                isClientReady = false;
+                return res.status(503).json({
+                    error: 'WhatsApp session disconnected. Please wait for reconnection and try again.',
+                    details: groupError.message
+                });
+            }
+            throw groupError;
+        }
 
-        if (!isAdmin) {
-            return res.status(403).json({
-                error: `You are not an admin in "${groupName}". Only admins can schedule messages.`
-            });
+        // Check if current user is admin with error handling
+        let currentUser, isAdmin;
+        try {
+            currentUser = client.info.wid._serialized;
+            isAdmin = await isUserAdmin(client, group, currentUser);
+
+            if (!isAdmin) {
+                return res.status(403).json({
+                    error: `You are not an admin in "${groupName}". Only admins can schedule messages.`
+                });
+            }
+        } catch (adminError) {
+            console.error('Error checking admin status:', adminError.message);
+            if (adminError.message.includes('Session closed') || adminError.message.includes('Protocol error')) {
+                isClientReady = false;
+                return res.status(503).json({
+                    error: 'WhatsApp session disconnected. Please wait for reconnection and try again.',
+                    details: adminError.message
+                });
+            }
+            throw adminError;
         }
 
         // Load existing schedule data
@@ -348,28 +439,65 @@ app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) =
         // Schedule the cron job
         cron.schedule(cronTime, async () => {
             try {
-                const group = await findGroupByName(client, groupName);
-                if (group) {
-                    const isAdmin = await isUserAdmin(client, group, currentUser);
-                    if (isAdmin) {
-                        // Send text message first if provided
-                        if (message.trim()) {
-                            await group.sendMessage(message);
-                        }
+                // Check if client is still ready before executing scheduled message
+                if (!isClientReady || !client || !client.info) {
+                    console.log(`⚠️  WhatsApp client not ready. Skipping scheduled message to "${groupName}".`);
+                    return;
+                }
 
-                        // Send images if any
-                        if (imagePaths && imagePaths.length > 0) {
-                            for (const imagePath of imagePaths) {
-                                if (fs.existsSync(imagePath)) {
-                                    const media = MessageMedia.fromFilePath(imagePath);
-                                    await group.sendMessage(media);
-                                    // Clean up the scheduled image file
-                                    fs.unlinkSync(imagePath);
+                let group;
+                try {
+                    group = await findGroupByName(client, groupName);
+                } catch (groupError) {
+                    if (groupError.message.includes('Session closed') || groupError.message.includes('Protocol error')) {
+                        console.log(`⚠️  WhatsApp session disconnected. Skipping scheduled message to "${groupName}".`);
+                        isClientReady = false;
+                        return;
+                    }
+                    throw groupError;
+                }
+
+                if (group) {
+                    let isAdmin;
+                    try {
+                        isAdmin = await isUserAdmin(client, group, currentUser);
+                    } catch (adminError) {
+                        if (adminError.message.includes('Session closed') || adminError.message.includes('Protocol error')) {
+                            console.log(`⚠️  WhatsApp session disconnected while checking admin status. Skipping scheduled message to "${groupName}".`);
+                            isClientReady = false;
+                            return;
+                        }
+                        throw adminError;
+                    }
+
+                    if (isAdmin) {
+                        try {
+                            // Send text message first if provided
+                            if (message.trim()) {
+                                await group.sendMessage(message);
+                            }
+
+                            // Send images if any
+                            if (imagePaths && imagePaths.length > 0) {
+                                for (const imagePath of imagePaths) {
+                                    if (fs.existsSync(imagePath)) {
+                                        const media = MessageMedia.fromFilePath(imagePath);
+                                        await group.sendMessage(media);
+                                        // Clean up the scheduled image file
+                                        fs.unlinkSync(imagePath);
+                                    }
                                 }
                             }
-                        }
 
-                        console.log(`✅ Scheduled message sent to "${groupName}" at ${new Date().toLocaleString()}${imagePaths?.length ? ` with ${imagePaths.length} image(s)` : ''}`);
+                            console.log(`✅ Scheduled message sent to "${groupName}" at ${new Date().toLocaleString()}${imagePaths?.length ? ` with ${imagePaths.length} image(s)` : ''}`);
+                        } catch (sendError) {
+                            if (sendError.message.includes('Session closed') || sendError.message.includes('Protocol error')) {
+                                console.log(`⚠️  WhatsApp session disconnected while sending message. Message to "${groupName}" not sent.`);
+                                isClientReady = false;
+                                return;
+                            }
+                            throw sendError;
+                        }
                     } else {
                         console.log(`❌ User no longer admin in "${groupName}". Scheduled message not sent.`);
                         // Clean up images if user is no longer admin
