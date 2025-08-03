@@ -94,7 +94,7 @@ export default function Dashboard() {
             groupId: msg.groupName,
             groupName: msg.groupName,
             memberCount: 0, // Will be updated when we fetch groups
-            status: "pending"
+            status: msg.status || "pending"
           }
         })
         setScheduledMessages(formattedMessages)

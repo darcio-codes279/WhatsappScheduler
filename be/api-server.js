@@ -518,9 +518,32 @@ app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) =
             imagePaths: imagePaths
         };
 
+        // Add status field to new task
+        newTask.status = 'pending';
+        newTask.lastAttempt = null;
+        newTask.errorMessage = null;
+
         // Add to schedule data
         scheduleData.push(newTask);
         saveScheduleData(scheduleData);
+
+        // Helper function to update message status
+        const updateMessageStatus = (taskId, status, errorMessage = null) => {
+            try {
+                const currentScheduleData = loadScheduleData();
+                const taskIndex = currentScheduleData.findIndex(task => task.id === taskId);
+                if (taskIndex !== -1) {
+                    currentScheduleData[taskIndex].status = status;
+                    currentScheduleData[taskIndex].lastAttempt = new Date().toISOString();
+                    if (errorMessage) {
+                        currentScheduleData[taskIndex].errorMessage = errorMessage;
+                    }
+                    saveScheduleData(currentScheduleData);
+                }
+            } catch (updateError) {
+                console.error('Error updating message status:', updateError.message);
+            }
+        };
 
         // Schedule the cron job
         cron.schedule(cronTime, async () => {
@@ -528,6 +551,7 @@ app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) =
                 // Check if client is still ready before executing scheduled message
                 if (!isClientReady || !client || !client.info) {
                     console.log(`⚠️  WhatsApp client not ready. Skipping scheduled message to "${groupName}".`);
+                    updateMessageStatus(newTask.id, 'failed', 'WhatsApp client not ready');
                     return;
                 }
 
@@ -538,6 +562,7 @@ app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) =
                     if (groupError.message.includes('Session closed') || groupError.message.includes('Protocol error')) {
                         console.log(`⚠️  WhatsApp session disconnected. Skipping scheduled message to "${groupName}".`);
                         isClientReady = false;
+                        updateMessageStatus(newTask.id, 'failed', 'WhatsApp session disconnected');
                         return;
                     }
                     throw groupError;
@@ -551,6 +576,7 @@ app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) =
                         if (adminError.message.includes('Session closed') || adminError.message.includes('Protocol error')) {
                             console.log(`⚠️  WhatsApp session disconnected while checking admin status. Skipping scheduled message to "${groupName}".`);
                             isClientReady = false;
+                            updateMessageStatus(newTask.id, 'failed', 'WhatsApp session disconnected while checking admin status');
                             return;
                         }
                         throw adminError;
@@ -576,16 +602,19 @@ app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) =
                             }
 
                             console.log(`✅ Scheduled message sent to "${groupName}" at ${new Date().toLocaleString()}${imagePaths?.length ? ` with ${imagePaths.length} image(s)` : ''}`);
+                            updateMessageStatus(newTask.id, 'sent');
                         } catch (sendError) {
                             if (sendError.message.includes('Session closed') || sendError.message.includes('Protocol error')) {
                                 console.log(`⚠️  WhatsApp session disconnected while sending message. Message to "${groupName}" not sent.`);
                                 isClientReady = false;
+                                updateMessageStatus(newTask.id, 'failed', 'WhatsApp session disconnected while sending message');
                                 return;
                             }
                             throw sendError;
                         }
                     } else {
                         console.log(`❌ User no longer admin in "${groupName}". Scheduled message not sent.`);
+                        updateMessageStatus(newTask.id, 'failed', 'User no longer admin in group');
                         // Clean up images if user is no longer admin
                         if (imagePaths && imagePaths.length > 0) {
                             imagePaths.forEach(imagePath => {
@@ -595,9 +624,12 @@ app.post('/api/messages/schedule', upload.array('images', 5), async (req, res) =
                             });
                         }
                     }
+                } else {
+                    updateMessageStatus(newTask.id, 'failed', 'Group not found');
                 }
             } catch (error) {
                 console.error(`Error sending scheduled message to "${groupName}":`, error.message);
+                updateMessageStatus(newTask.id, 'failed', error.message);
                 // Clean up images on error
                 if (imagePaths && imagePaths.length > 0) {
                     imagePaths.forEach(imagePath => {

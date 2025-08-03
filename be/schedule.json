@@ -1,12 +1,17 @@
 [
   {
     "id": "1754000000001",
-    "groupName": "Family Chat",
-    "message": "Good morning, fam! ☀️",
-    "cron": "0 9 * * *",
+    "groupName": "TEST_WA_BOT",
+    "message": "Scheduled test",
+    "cron": "12 10 3 8 *",
     "description": "",
     "createdAt": "2025-08-01T00:00:00.001Z",
-    "createdBy": "system"
+    "createdBy": "system",
+    "status": "pending",
+    "lastAttempt": null,
+    "errorMessage": null,
+    "updatedAt": "2025-08-03T09:10:29.731Z",
+    "imagePaths": []
   },
   {
     "id": "1754000000002",
@@ -15,7 +20,10 @@
     "cron": "50 8 * * 1-5",
     "description": "",
     "createdAt": "2025-08-01T00:00:00.002Z",
-    "createdBy": "system"
+    "createdBy": "system",
+    "status": "pending",
+    "lastAttempt": null,
+    "errorMessage": null
   },
   {
     "id": "1753984062444",
@@ -27,7 +35,10 @@
     "maxOccurrences": null,
     "currentOccurrences": 1,
     "createdAt": "2025-07-31T17:47:42.444Z",
-    "createdBy": "447722559905@c.us"
+    "createdBy": "447722559905@c.us",
+    "status": "sent",
+    "lastAttempt": "2025-07-31T18:50:00.000Z",
+    "errorMessage": null
   },
   {
     "id": "1754067003180",
@@ -39,19 +50,10 @@
     "maxOccurrences": null,
     "currentOccurrences": 1,
     "createdAt": "2025-08-01T16:50:03.180Z",
-    "createdBy": "447722559905@c.us"
-  },
-  {
-    "id": "1754121700366",
-    "groupName": "TEST_WA_BOT",
-    "message": "scheduled message",
-    "cron": "3 9 2 8 *",
-    "description": "",
-    "endDate": null,
-    "maxOccurrences": null,
-    "currentOccurrences": 1,
-    "createdAt": "2025-08-02T08:01:40.366Z",
-    "createdBy": "447722559905@c.us"
+    "createdBy": "447722559905@c.us",
+    "status": "pending",
+    "lastAttempt": null,
+    "errorMessage": null
   },
   {
     "id": "1754211528174",
@@ -61,6 +63,9 @@
     "description": "",
     "createdAt": "2025-08-03T08:58:48.174Z",
     "createdBy": "447722559905@c.us",
+    "status": "failed",
+    "lastAttempt": "2025-08-03T10:00:00.000Z",
+    "errorMessage": "Group not found",
     "imagePaths": []
   }
 ]
