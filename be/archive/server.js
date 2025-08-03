@@ -7,7 +7,7 @@ const multer = require('multer');
 const qrcode = require('qrcode-terminal');
 const QRCode = require('qrcode');
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const { findGroupByName, isUserAdmin } = require('./utils');
+const { findGroupByName, isUserAdmin } = require('../utils');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -257,7 +257,7 @@ app.get('/api/whatsapp/qr', async (req, res) => {
             message: 'WhatsApp is already connected'
         });
     }
-    
+
     if (currentQrCode) {
         try {
             // Generate QR code as data URL for frontend display
@@ -269,7 +269,7 @@ app.get('/api/whatsapp/qr', async (req, res) => {
                     light: '#FFFFFF'
                 }
             });
-            
+
             return res.json({
                 hasQr: true,
                 qrCode: currentQrCode,
@@ -283,7 +283,7 @@ app.get('/api/whatsapp/qr', async (req, res) => {
             });
         }
     }
-    
+
     res.json({
         hasQr: false,
         message: isInitializing ? 'Initializing WhatsApp client...' : 'No QR code available. Please restart the connection.'
