@@ -3,19 +3,22 @@
 import type React from "react"
 
 import { useState } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Smartphone, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { Smartphone, Mail, Lock, Eye, EyeOff, User } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface AuthModalProps {
+  isOpen: boolean
+  onClose: () => void
   onLogin: (token: string) => void
 }
 
-export function AuthModal({ onLogin }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -72,18 +75,23 @@ export function AuthModal({ onLogin }: AuthModalProps) {
     }, 1000)
   }
 
+  const handleClose = () => {
+    setEmail("")
+    setPassword("")
+    setMagicLinkSent(false)
+    onClose()
+  }
+
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-neutral-900 border-neutral-800">
-        <CardHeader className="text-center space-y-4">
-          <div className="w-16 h-16 mx-auto bg-[#05c997] rounded-full flex items-center justify-center">
-            <Smartphone className="h-8 w-8 text-white" />
-          </div>
-          <div>
-            <CardTitle className="text-2xl text-white">Welcome Back</CardTitle>
-            <p className="text-gray-400 mt-2">Sign in to your WhatsApp Scheduler</p>
-          </div>
-        </CardHeader>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md bg-neutral-900 border-neutral-800 text-white">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <Smartphone className="h-6 w-6 text-[#05c997]" />
+            Welcome Back
+          </DialogTitle>
+          <p className="text-gray-400 text-sm">Sign in to your WhatsApp Scheduler account</p>
+        </DialogHeader>
         <CardContent>
           <Tabs defaultValue="email" className="space-y-4">
             <TabsList className="grid w-full grid-cols-2 bg-neutral-800">
@@ -200,7 +208,7 @@ export function AuthModal({ onLogin }: AuthModalProps) {
             <p className="text-xs text-gray-500">By signing in, you agree to our Terms of Service and Privacy Policy</p>
           </div>
         </CardContent>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

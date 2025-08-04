@@ -5,14 +5,17 @@ import { WhatsAppStatus } from "@/components/whatsapp-status"
 import { MessageComposer } from "@/components/message-composer"
 import { ScheduledMessages } from "@/components/scheduled-messages"
 import { ActivityLog } from "@/components/activity-log"
+import { UserSettings } from "@/components/user-settings"
+import { AuthModal } from "@/components/auth-modal"
 import { Toaster } from "@/components/ui/toaster"
 import { useToast } from "@/hooks/use-toast"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
 export default function Dashboard() {
-  // Authentication disabled for testing
+  // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(true)
+  const [showAuthModal, setShowAuthModal] = useState(false)
   const [isWhatsAppConnected, setIsWhatsAppConnected] = useState(false)
   const [scheduledMessages, setScheduledMessages] = useState<Array<{
     id: string
@@ -155,6 +158,25 @@ export default function Dashboard() {
       title: "Logged out",
       description: "You have been successfully logged out",
     })
+    addActivityLog({
+      message: "User logged out",
+      type: "connection",
+      status: "success"
+    })
+  }
+
+  const handleLogin = (token: string) => {
+    setIsAuthenticated(true)
+    setShowAuthModal(false)
+    addActivityLog({
+      message: "User logged in successfully",
+      type: "connection",
+      status: "success"
+    })
+  }
+
+  const handleOpenAuthModal = () => {
+    setShowAuthModal(true)
   }
 
   const handleScheduleMessage = async (data: {
@@ -281,8 +303,12 @@ export default function Dashboard() {
   const handleSendNow = async (data: {
     content: string
     groupName: string
-    recurrenceType: 'once' | 'weekly'
-    weekdays?: number[]
+    recurrence?: {
+      type: 'once' | 'weekly'
+      occurrences?: number
+      isInfinite?: boolean
+      weekdays?: number[]
+    }
     images?: File[]
   }) => {
     try {
@@ -578,10 +604,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Responsive Grid Layout - Optimized for single screen */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 grid-rows-1 lg:grid-rows-2 gap-2 sm:gap-3 lg:gap-4 min-h-0 overflow-hidden">
-          {/* WhatsApp Status - Compact on mobile, left column on desktop */}
-          <div className="lg:col-span-3 lg:row-span-1 h-fit">
+        {/* Responsive Grid Layout - Optimized bento grid */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 grid-rows-1 lg:grid-rows-2 gap-2 sm:gap-3 lg:gap-4 min-h-0 overflow-hidden">
+          {/* Top Row */}
+          {/* WhatsApp Status - Top left (1x1) */}
+          <div className="lg:col-span-1 lg:row-span-1 min-h-0">
             <WhatsAppStatus
               isConnected={isWhatsAppConnected}
               onConnectionChange={setIsWhatsAppConnected}
@@ -590,21 +617,35 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Message Composer - Main center area spanning 2 rows */}
-          <div className="lg:col-span-5 lg:row-span-2 h-fit lg:h-full">
+          {/* Message Composer - Top center (2x1) */}
+          <div className="lg:col-span-2 lg:row-span-1 h-fit lg:h-full">
             <MessageComposer
               onSchedule={handleScheduleMessage}
-              onSendNow={handleSendNow}
+              onSendNow={(data) => handleSendNow({ ...data, recurrence: { type: "once" }, images: data.images || [] })}
               onUpdate={handleUpdateScheduled}
               isConnected={isWhatsAppConnected}
               groups={groups}
-              editingMessage={editingMessage}
+              editingMessage={editingMessage ? {
+                id: editingMessage.id,
+                content: editingMessage.content,
+                groupName: editingMessage.groupName,
+                scheduledFor: editingMessage.scheduledTime,
+                recurrence: editingMessage.recurrenceType === "weekly" ? {
+                  type: "weekly",
+                  occurrences: editingMessage.occurrences,
+                  isInfinite: editingMessage.occurrences === -1,
+                  weekdays: editingMessage.weekdays
+                } : {
+                  type: "once",
+                  occurrences: 1
+                }
+              } : null}
               onCancelEdit={handleCancelEdit}
             />
           </div>
 
-          {/* Scheduled Messages - Top right */}
-          <div className="lg:col-span-4 lg:row-span-1 min-h-0">
+          {/* Scheduled Messages - Top right (1x1) */}
+          <div className="lg:col-span-1 lg:row-span-1 min-h-0">
             <ScheduledMessages
               messages={scheduledMessages}
               onDelete={handleDeleteScheduled}
@@ -612,12 +653,29 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Activity Log - Bottom right */}
-          <div className="lg:col-span-4 lg:row-span-1 min-h-0">
+          {/* Bottom Row */}
+          {/* User Settings - Bottom left (1x1) */}
+          <div className="lg:col-span-1 lg:row-span-1 min-h-0">
+            <UserSettings onOpenAuthModal={handleOpenAuthModal} />
+          </div>
+
+          {/* Empty space - Bottom center (2x1) */}
+          <div className="lg:col-span-2 lg:row-span-1"></div>
+
+          {/* Activity Log - Bottom right underneath Scheduled Messages (1x1) */}
+          <div className="lg:col-span-1 lg:row-span-1 min-h-0">
             <ActivityLog activities={activityLog} />
           </div>
         </div>
       </div>
+
+      {/* Authentication Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onLogin={handleLogin}
+      />
+
       <Toaster />
     </div>
   )
