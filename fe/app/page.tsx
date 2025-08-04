@@ -160,26 +160,29 @@ export default function Dashboard() {
   const handleScheduleMessage = async (data: {
     content: string
     groupName: string
-    scheduledTime: string
-    occurrences: number
-    recurrenceType: 'once' | 'weekly'
-    weekdays?: number[]
+    scheduledFor: Date
+    recurrence?: {
+      type: 'weekly'
+      occurrences?: number
+      isInfinite?: boolean
+      weekdays?: number[]
+    }
     images?: File[]
   }) => {
     try {
       const formData = new FormData()
       formData.append('groupName', data.groupName)
       formData.append('message', data.content)
-      formData.append('cronTime', convertDateTimeToCron(new Date(data.scheduledTime)))
-      formData.append('occurrences', data.occurrences.toString())
-      formData.append('recurrenceType', data.recurrenceType)
+      formData.append('cronTime', convertDateTimeToCron(data.scheduledFor))
+      formData.append('occurrences', (data.recurrence?.occurrences || 1).toString())
+      formData.append('recurrenceType', data.recurrence?.type || 'once')
 
-      if (data.weekdays) {
-        formData.append('weekdays', JSON.stringify(data.weekdays))
+      if (data.recurrence?.weekdays) {
+        formData.append('weekdays', JSON.stringify(data.recurrence.weekdays))
       }
 
       const description = data.recurrenceType === 'weekly'
-        ? `Weekly on ${data.weekdays?.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${data.occurrences === -1 ? ' (infinite)' : ` (${data.occurrences} weeks)`}`
+        ? `Weekly on ${data.weekdays?.map((d: number) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${data.occurrences === -1 ? ' (infinite)' : ` (${data.occurrences} weeks)`}`
         : (data.occurrences === -1 ? 'Infinite occurrences' : (data.occurrences > 1 ? `Repeat ${data.occurrences} times` : ''))
 
       formData.append('description', description)
@@ -202,23 +205,23 @@ export default function Dashboard() {
         // Refresh scheduled messages
         fetchScheduledMessages()
 
-        const scheduleText = data.recurrenceType === 'weekly'
-          ? `weekly on ${data.weekdays?.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${data.occurrences === -1 ? ' (infinite)' : ` for ${data.occurrences} weeks`}`
-          : (data.occurrences === -1 ? ' (infinite times)' : (data.occurrences > 1 ? ` (${data.occurrences} times)` : ''))
+        const scheduleText = data.recurrence?.type === 'weekly'
+          ? `weekly on ${data.recurrence?.weekdays?.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${(data.recurrence?.occurrences || 1) === -1 ? ' (infinite)' : ` for ${data.recurrence?.occurrences} weeks`}`
+          : ((data.recurrence?.occurrences || 1) === -1 ? ' (infinite times)' : ((data.recurrence?.occurrences || 1) > 1 ? ` (${data.recurrence?.occurrences} times)` : ''))
 
         const imageText = data.images && data.images.length > 0 ? ` with ${data.images.length} image${data.images.length > 1 ? 's' : ''}` : ''
 
         addActivityLog({
-          message: `Message scheduled for ${data.groupName}${imageText} ${data.recurrenceType === 'weekly' ? scheduleText : `on ${new Date(data.scheduledTime).toLocaleString()}${scheduleText}`}`,
+          message: `Message scheduled for ${data.groupName}${imageText} ${data.recurrence?.type === 'weekly' ? scheduleText : `on ${data.scheduledFor.toLocaleString()}${scheduleText}`}`,
           type: "scheduled",
           status: "success"
         })
 
         toast({
           title: "Message Scheduled",
-          description: data.recurrenceType === 'weekly'
-            ? `Your message${imageText} will be sent to ${data.groupName} ${scheduleText} starting ${new Date(data.scheduledTime).toLocaleString()}`
-            : `Your message${imageText} will be sent to ${data.groupName} on ${new Date(data.scheduledTime).toLocaleString()}${scheduleText}`,
+          description: data.recurrence?.type === 'weekly'
+            ? `Your message${imageText} will be sent to ${data.groupName} ${scheduleText} starting ${data.scheduledFor.toLocaleString()}`
+            : `Your message${imageText} will be sent to ${data.groupName} on ${data.scheduledFor.toLocaleString()}${scheduleText}`,
         })
       } else {
         // Check if it's a session-related error
@@ -399,29 +402,31 @@ export default function Dashboard() {
   }
 
   const handleUpdateScheduled = async (data: {
-    id: string
     content: string
     groupName: string
-    scheduledTime: string
-    occurrences: number
-    recurrenceType: 'once' | 'weekly'
-    weekdays?: number[]
+    scheduledFor: Date
+    recurrence?: {
+      type: 'weekly'
+      occurrences?: number
+      isInfinite?: boolean
+      weekdays?: number[]
+    }
     images?: File[]
   }) => {
     try {
       const formData = new FormData()
       formData.append('groupName', data.groupName)
       formData.append('message', data.content)
-      formData.append('cronTime', convertDateTimeToCron(new Date(data.scheduledTime)))
-      formData.append('occurrences', data.occurrences.toString())
-      formData.append('recurrenceType', data.recurrenceType)
+      formData.append('cronTime', convertDateTimeToCron(data.scheduledFor))
+      formData.append('occurrences', (data.recurrence?.occurrences || 1).toString())
+      formData.append('recurrenceType', data.recurrence?.type || 'once')
 
-      if (data.weekdays) {
-        formData.append('weekdays', JSON.stringify(data.weekdays))
+      if (data.recurrence?.weekdays) {
+        formData.append('weekdays', JSON.stringify(data.recurrence.weekdays))
       }
 
       const description = data.recurrenceType === 'weekly'
-        ? `Weekly on ${data.weekdays?.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${data.occurrences === -1 ? ' (infinite)' : ` (${data.occurrences} weeks)`}`
+        ? `Weekly on ${data.weekdays?.map((d: number) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${data.occurrences === -1 ? ' (infinite)' : ` (${data.occurrences} weeks)`}`
         : (data.occurrences === -1 ? 'Infinite occurrences' : (data.occurrences > 1 ? `Repeat ${data.occurrences} times` : ''))
 
       formData.append('description', description)
@@ -433,7 +438,7 @@ export default function Dashboard() {
         })
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/messages/scheduled/${data.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/messages/scheduled/${editingMessage?.id}`, {
         method: 'PUT',
         body: formData,
       })
@@ -445,23 +450,23 @@ export default function Dashboard() {
         fetchScheduledMessages()
         setEditingMessage(null)
 
-        const scheduleText = data.recurrenceType === 'weekly'
-          ? `weekly on ${data.weekdays?.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${data.occurrences === -1 ? ' (infinite)' : ` for ${data.occurrences} weeks`}`
-          : (data.occurrences === -1 ? ' (infinite times)' : (data.occurrences > 1 ? ` (${data.occurrences} times)` : ''))
+        const scheduleText = data.recurrence?.type === 'weekly'
+          ? `weekly on ${data.recurrence?.weekdays?.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}${(data.recurrence?.occurrences || 1) === -1 ? ' (infinite)' : ` for ${data.recurrence?.occurrences} weeks`}`
+          : ((data.recurrence?.occurrences || 1) === -1 ? ' (infinite times)' : ((data.recurrence?.occurrences || 1) > 1 ? ` (${data.recurrence?.occurrences} times)` : ''))
 
         const imageText = data.images && data.images.length > 0 ? ` with ${data.images.length} image${data.images.length > 1 ? 's' : ''}` : ''
 
         addActivityLog({
-          message: `Scheduled message updated for ${data.groupName}${imageText} ${data.recurrenceType === 'weekly' ? scheduleText : `on ${new Date(data.scheduledTime).toLocaleString()}${scheduleText}`}`,
+          message: `Scheduled message updated for ${data.groupName}${imageText} ${data.recurrence?.type === 'weekly' ? scheduleText : `on ${data.scheduledFor.toLocaleString()}${scheduleText}`}`,
           type: "scheduled",
           status: "success"
         })
 
         toast({
           title: "Message Updated",
-          description: data.recurrenceType === 'weekly'
-            ? `Your message${imageText} for ${data.groupName} has been updated to send ${scheduleText} starting ${new Date(data.scheduledTime).toLocaleString()}`
-            : `Your message${imageText} for ${data.groupName} has been updated to send on ${new Date(data.scheduledTime).toLocaleString()}${scheduleText}`,
+          description: data.recurrence?.type === 'weekly'
+            ? `Your message${imageText} for ${data.groupName} has been updated to send ${scheduleText} starting ${data.scheduledFor.toLocaleString()}`
+            : `Your message${imageText} for ${data.groupName} has been updated to send on ${data.scheduledFor.toLocaleString()}${scheduleText}`,
         })
       } else {
         // Check if it's a session-related error

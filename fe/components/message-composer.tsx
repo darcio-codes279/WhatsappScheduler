@@ -6,31 +6,30 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Send, Clock, CalendarIcon, Users, Infinity, Image, Bold, Italic, Underline, Strikethrough, X, Star } from "lucide-react"
-import { format } from "date-fns"
-import { cn } from "@/lib/utils"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Send, Clock, CalendarIcon, Users, Image, Bold, Italic, Underline, X, Check, Plus, ChevronDown, Search } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface MessageComposerProps {
   onSendNow: (data: {
     content: string
     groupName: string
-    recurrenceType: 'once' | 'weekly'
-    weekdays?: number[]
-    images?: File[]
+    images: File[]
   }) => void
   onSchedule: (data: {
     content: string
     groupName: string
-    scheduledTime: string
-    occurrences: number
-    recurrenceType: 'once' | 'weekly'
-    weekdays?: number[]
-    images?: File[]
+    scheduledFor: Date
+    recurrence?: {
+      type: 'weekly'
+      occurrences?: number
+      isInfinite?: boolean
+      weekdays?: number[]
+    }
+    images: File[]
   }) => void
   onUpdate?: (data: {
     id: string
@@ -40,201 +39,195 @@ interface MessageComposerProps {
     occurrences: number
     recurrenceType: 'once' | 'weekly'
     weekdays?: number[]
-    images?: File[]
+    images: File[]
   }) => void
-  groups: Array<{ id: string; name: string; memberCount: number }>
+  groups: Array<{
+    id: string
+    name: string
+    memberCount: number
+  }>
   isConnected: boolean
   editingMessage?: {
     id: string
     content: string
-    scheduledTime: Date
+    groupId?: string
     groupName: string
+    scheduledFor?: Date
+    scheduledTime?: Date
+    recurrence?: {
+      type: 'once' | 'weekly'
+      occurrences?: number
+      isInfinite?: boolean
+      weekdays?: number[]
+    }
     occurrences?: number
     recurrenceType?: 'once' | 'weekly'
     weekdays?: number[]
-  } | null
+  }
   onCancelEdit?: () => void
 }
 
-// Add this interface near the top after the existing interfaces
-interface Group {
-  id: string
-  name: string
-  memberCount: number
-  description?: string
-}
-
-// Add this mock data after the imports (you can replace with real data from your API)
-const mockGroups: Group[] = [
-  {
-    id: "1",
-    name: "Marketing Team",
-    memberCount: 12,
-    description: "Marketing department members",
-  },
-  {
-    id: "2",
-    name: "Sales Team",
-    memberCount: 8,
-    description: "Sales representatives",
-  },
-  {
-    id: "3",
-    name: "Customer Support",
-    memberCount: 15,
-    description: "Support team members",
-  },
-  {
-    id: "4",
-    name: "Development Team",
-    memberCount: 20,
-    description: "Software developers and engineers",
-  },
-  {
-    id: "5",
-    name: "VIP Customers",
-    memberCount: 45,
-    description: "Premium tier customers",
-  },
+const weekdays = [
+  { name: 'Sunday', short: 'Sun', value: 0 },
+  { name: 'Monday', short: 'Mon', value: 1 },
+  { name: 'Tuesday', short: 'Tue', value: 2 },
+  { name: 'Wednesday', short: 'Wed', value: 3 },
+  { name: 'Thursday', short: 'Thu', value: 4 },
+  { name: 'Friday', short: 'Fri', value: 5 },
+  { name: 'Saturday', short: 'Sat', value: 6 }
 ]
 
-// Update the state variables - replace recipient with selectedGroup
 export function MessageComposer({ onSendNow, onSchedule, onUpdate, groups, isConnected, editingMessage, onCancelEdit }: MessageComposerProps) {
+  const [activeTab, setActiveTab] = useState<"send-now" | "schedule">("send-now")
   const [message, setMessage] = useState("")
-  const [selectedGroup, setSelectedGroup] = useState("")
-  const [date, setDate] = useState<Date>()
-  const [time, setTime] = useState("")
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
+  const [scheduleDate, setScheduleDate] = useState("")
+  const [scheduleTime, setScheduleTime] = useState("")
   const [occurrences, setOccurrences] = useState(1)
   const [isInfinite, setIsInfinite] = useState(false)
   const [recurrenceType, setRecurrenceType] = useState<'once' | 'weekly'>('once')
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([])
-  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
-  const [favoriteGroups, setFavoriteGroups] = useState<string[]>([])
+  const [groupSearchQuery, setGroupSearchQuery] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  // Load favorites from localStorage on component mount
-  useEffect(() => {
-    const savedFavorites = localStorage.getItem('whatsapp-bot-favorites')
-    if (savedFavorites) {
-      setFavoriteGroups(JSON.parse(savedFavorites))
-    }
-  }, [])
-
-  // Save favorites to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('whatsapp-bot-favorites', JSON.stringify(favoriteGroups))
-  }, [favoriteGroups])
 
   // Populate form when editing a message
   useEffect(() => {
     if (editingMessage) {
-      console.log('Editing message:', editingMessage)
-      console.log('Message ID:', editingMessage.id)
       setMessage(editingMessage.content)
-      setSelectedGroup(editingMessage.groupName)
-      setDate(editingMessage.scheduledTime)
-
-      // Extract time from scheduledTime
-      const timeString = editingMessage.scheduledTime.toTimeString().slice(0, 5)
-      setTime(timeString)
-
+      setSelectedGroups([editingMessage.groupName])
+      if (editingMessage.scheduledTime) {
+        const scheduledDate = new Date(editingMessage.scheduledTime)
+        setScheduleDate(scheduledDate.toISOString().split('T')[0])
+        setScheduleTime(scheduledDate.toTimeString().slice(0, 5))
+        setActiveTab("schedule")
+      }
       setOccurrences(editingMessage.occurrences || 1)
       setIsInfinite(editingMessage.occurrences === -1)
       setRecurrenceType(editingMessage.recurrenceType || 'once')
       setSelectedWeekdays(editingMessage.weekdays || [])
-      setIsScheduleModalOpen(true)
     }
   }, [editingMessage])
 
-  // Toggle favorite status of a group
-  const toggleFavorite = (groupId: string) => {
-    setFavoriteGroups(prev =>
-      prev.includes(groupId)
-        ? prev.filter(id => id !== groupId)
-        : [...prev, groupId]
-    )
-  }
-
-  // Update the validation functions to use selectedGroup instead of recipient
-  const validateForm = () => {
+  const validateMessage = () => {
     const newErrors: Record<string, string> = {}
 
     if (!message.trim()) {
-      newErrors.message = "Message is required"
-    } else if (message.length > 1000) {
-      newErrors.message = "Message must be less than 1000 characters"
+      newErrors.message = "Message cannot be empty"
     }
 
-    if (!selectedGroup) {
-      newErrors.group = "Please select a group"
+    if (selectedGroups.length === 0) {
+      newErrors.groups = "Please select at least one group"
     }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-  const validateScheduleForm = () => {
+  const validateSchedule = () => {
     const newErrors: Record<string, string> = {}
 
-    if (!validateForm()) return false
-
-    if (!date) {
-      newErrors.date = "Date is required"
+    if (!message.trim()) {
+      newErrors.message = "Message cannot be empty"
     }
 
-    if (!time) {
-      newErrors.time = "Time is required"
+    if (selectedGroups.length === 0) {
+      newErrors.groups = "Please select at least one group"
     }
 
-    if (date && time) {
-      const scheduledDateTime = new Date(date)
-      const [hours, minutes] = time.split(":")
-      scheduledDateTime.setHours(Number.parseInt(hours), Number.parseInt(minutes))
-
-      if (scheduledDateTime <= new Date()) {
-        newErrors.datetime = "Scheduled time must be in the future"
-      }
+    if (!scheduleDate) {
+      newErrors.date = "Please select a date"
     }
 
-    if (!isInfinite && (occurrences < 1 || occurrences > 100)) {
-      newErrors.occurrences = "Occurrences must be between 1 and 100"
+    if (!scheduleTime) {
+      newErrors.time = "Please select a time"
     }
 
     if (recurrenceType === 'weekly' && selectedWeekdays.length === 0) {
       newErrors.weekdays = "Please select at least one weekday"
     }
 
+    if (!isInfinite && occurrences < 1) {
+      newErrors.occurrences = "Occurrences must be at least 1"
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-  // Update the handleSendNow function to use selectedGroup
   const handleSendNow = () => {
-    if (!validateForm()) return
+    if (!validateMessage()) return
 
-    const selectedGroupData = groups.find((g) => g.id === selectedGroup)
-
-    onSendNow({
-      content: message,
-      groupName: selectedGroupData?.name || selectedGroup,
-      recurrenceType,
-      weekdays: recurrenceType === 'weekly' ? selectedWeekdays : undefined,
-      images: uploadedImages
+    selectedGroups.forEach(groupId => {
+      const selectedGroupData = groups.find((g) => g.id === groupId)
+      onSendNow({
+        content: message,
+        groupName: selectedGroupData?.name || groupId,
+        images: uploadedImages
+      })
     })
 
-    // Reset form
+    clearForm()
+  }
+
+  const handleSchedule = () => {
+    if (!validateSchedule()) return
+
+    const scheduledDateTime = new Date(scheduleDate)
+    const [hours, minutes] = scheduleTime.split(':')
+    scheduledDateTime.setHours(parseInt(hours), parseInt(minutes))
+
+    selectedGroups.forEach(groupId => {
+      const selectedGroupData = groups.find((g) => g.id === groupId)
+
+      const scheduleData = {
+        message,
+        group: selectedGroupData?.name || groupId,
+        scheduledTime: scheduledDateTime,
+        occurrences: isInfinite ? -1 : occurrences,
+        recurrenceType,
+        weekdays: recurrenceType === 'weekly' ? selectedWeekdays : undefined,
+        images: uploadedImages
+      }
+
+      if (editingMessage && onUpdate) {
+        onUpdate({
+          id: editingMessage.id,
+          content: scheduleData.message,
+          groupName: scheduleData.group,
+          scheduledTime: scheduleData.scheduledTime.toISOString(),
+          occurrences: scheduleData.occurrences,
+          recurrenceType: scheduleData.recurrenceType,
+          weekdays: scheduleData.weekdays,
+          images: uploadedImages
+        })
+      } else {
+        onSchedule({
+          content: scheduleData.message,
+          groupName: scheduleData.group,
+          scheduledFor: scheduleData.scheduledTime,
+          recurrence: scheduleData.recurrenceType === 'once' ? undefined : {
+            type: scheduleData.recurrenceType,
+            occurrences: scheduleData.occurrences === -1 ? undefined : scheduleData.occurrences,
+            isInfinite: scheduleData.occurrences === -1,
+            weekdays: scheduleData.weekdays
+          },
+          images: uploadedImages
+        })
+      }
+    })
+
     clearForm()
   }
 
   const clearForm = () => {
     setMessage("")
-    setSelectedGroup("")
-    setDate(undefined)
-    setTime("")
+    setSelectedGroups([])
+    setScheduleDate("")
+    setScheduleTime("")
     setOccurrences(1)
     setIsInfinite(false)
     setRecurrenceType('once')
@@ -242,13 +235,34 @@ export function MessageComposer({ onSendNow, onSchedule, onUpdate, groups, isCon
     setErrors({})
     setUploadedImages([])
     setImagePreviews([])
+    setActiveTab("send-now")
     if (onCancelEdit) {
       onCancelEdit()
     }
   }
 
-  // Text formatting functions
-  const formatText = (formatType: 'bold' | 'italic' | 'underline' | 'strikethrough') => {
+  const toggleGroupSelection = (groupId: string) => {
+    setSelectedGroups((prev: string[]) =>
+      prev.includes(groupId)
+        ? prev.filter((id: string) => id !== groupId)
+        : [...prev, groupId]
+    )
+  }
+
+  const selectAllGroups = () => {
+    setSelectedGroups(groups.map(g => g.id))
+  }
+
+  const clearAllGroups = () => {
+    setSelectedGroups([])
+  }
+
+  // Filter groups based on search query
+  const filteredGroups = groups.filter(group =>
+    group.name.toLowerCase().includes(groupSearchQuery.toLowerCase())
+  )
+
+  const formatText = (formatType: 'bold' | 'italic' | 'underline') => {
     const textarea = textareaRef.current
     if (!textarea) return
 
@@ -256,7 +270,7 @@ export function MessageComposer({ onSendNow, onSchedule, onUpdate, groups, isCon
     const end = textarea.selectionEnd
     const selectedText = message.substring(start, end)
 
-    let formattedText = selectedText
+    let formattedText = ''
     switch (formatType) {
       case 'bold':
         formattedText = `*${selectedText}*`
@@ -267,607 +281,627 @@ export function MessageComposer({ onSendNow, onSchedule, onUpdate, groups, isCon
       case 'underline':
         formattedText = `~${selectedText}~`
         break
-      case 'strikethrough':
-        formattedText = `~${selectedText}~`
-        break
     }
 
     const newMessage = message.substring(0, start) + formattedText + message.substring(end)
     setMessage(newMessage)
 
-    // Restore cursor position
     setTimeout(() => {
       textarea.focus()
-      textarea.setSelectionRange(start + formattedText.length, start + formattedText.length)
+      textarea.setSelectionRange(start + 1, start + 1 + selectedText.length)
     }, 0)
   }
 
-  // Image handling functions
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || [])
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
     const validFiles = files.filter(file => {
-      const isValidType = file.type.startsWith('image/')
-      const isValidSize = file.size <= 10 * 1024 * 1024 // 10MB limit
-      return isValidType && isValidSize
+      if (!file.type.startsWith('image/')) {
+        setErrors(prev => ({ ...prev, images: 'Please select only image files' }))
+        return false
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, images: 'Image size must be less than 10MB' }))
+        return false
+      }
+      return true
     })
 
-    if (validFiles.length !== files.length) {
-      setErrors({ ...errors, images: 'Some files were skipped. Only images under 10MB are allowed.' })
-    } else {
-      setErrors({ ...errors, images: '' })
+    if (validFiles.length > 0) {
+      setUploadedImages(prev => [...prev, ...validFiles])
+
+      validFiles.forEach(file => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          setImagePreviews(prev => [...prev, e.target?.result as string])
+        }
+        reader.readAsDataURL(file)
+      })
+
+      setErrors(prev => ({ ...prev, images: '' }))
     }
 
-    const newImages = [...uploadedImages, ...validFiles].slice(0, 5) // Max 5 images
-    setUploadedImages(newImages)
-
-    // Create previews
-    const newPreviews = [...imagePreviews]
-    validFiles.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          newPreviews.push(e.target.result as string)
-          setImagePreviews([...newPreviews])
-        }
-      }
-      reader.readAsDataURL(file)
-    })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const removeImage = (index: number) => {
-    const newImages = uploadedImages.filter((_, i) => i !== index)
-    const newPreviews = imagePreviews.filter((_, i) => i !== index)
-    setUploadedImages(newImages)
-    setImagePreviews(newPreviews)
+    setUploadedImages(prev => prev.filter((_, i) => i !== index))
+    setImagePreviews(prev => prev.filter((_, i) => i !== index))
   }
-
-  // Update the handleSchedule function to use selectedGroup
-  const handleSchedule = () => {
-    if (!validateScheduleForm()) return
-
-    const scheduledDateTime = new Date(date!)
-    const [hours, minutes] = time.split(":")
-    scheduledDateTime.setHours(Number.parseInt(hours), Number.parseInt(minutes))
-
-    const selectedGroupData = groups.find((g) => g.id === selectedGroup)
-
-    const scheduleData = {
-      message,
-      group: selectedGroupData?.name || selectedGroup,
-      scheduledTime: scheduledDateTime,
-      occurrences: isInfinite ? -1 : occurrences,
-      recurrenceType,
-      weekdays: recurrenceType === 'weekly' ? selectedWeekdays : undefined,
-      images: uploadedImages
-    }
-
-    if (editingMessage && onUpdate) {
-      // Update existing message
-      console.log('Updating message with ID:', editingMessage.id)
-      onUpdate({
-        id: editingMessage.id,
-        content: scheduleData.message,
-        groupName: scheduleData.group,
-        scheduledTime: scheduleData.scheduledTime.toISOString(),
-        occurrences: scheduleData.occurrences,
-        recurrenceType: scheduleData.recurrenceType,
-        weekdays: scheduleData.weekdays,
-        images: uploadedImages
-      })
-    } else {
-      // Create new message
-      onSchedule({
-        content: scheduleData.message,
-        groupName: scheduleData.group,
-        scheduledTime: scheduleData.scheduledTime.toISOString(),
-        occurrences: scheduleData.occurrences,
-        recurrenceType: scheduleData.recurrenceType,
-        weekdays: scheduleData.weekdays,
-        images: uploadedImages
-      })
-    }
-
-    // Reset form and close modal
-    clearForm()
-    setIsScheduleModalOpen(false)
-  }
-
-  const characterCount = message.length
-  const isOverLimit = characterCount > 1000
 
   return (
-    <Card className="bg-neutral-900 border-neutral-800 h-full flex flex-col">
-      <CardHeader className="pb-2 px-4 py-3">
-        <CardTitle className="flex items-center gap-2 text-white text-base">
-          <Send className="h-4 w-4 text-[#05c997]" />
-          <span className="hidden sm:inline">Message Composer</span>
-          <span className="sm:hidden">Compose</span>
+    <Card className="bg-neutral-900 border-neutral-800 text-white">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
+          <Send className="h-5 w-5 text-[#05c997]" />
+          Message Composer
+          {!isConnected && (
+            <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full ml-auto">
+              Disconnected
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 flex-1 px-4 pb-4">
-        {/* Replace the recipient phone number input section with: */}
-        <div className="space-y-1">
-          <Label htmlFor="group" className="text-gray-300 text-sm">
-            Select Group
-          </Label>
-          <Select value={selectedGroup} onValueChange={setSelectedGroup} disabled={!isConnected}>
-            <SelectTrigger
-              className={cn("bg-neutral-800 border-neutral-700 text-white", errors.group && "border-red-500")}
-            >
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-gray-400" />
-                <SelectValue placeholder={groups.length > 0 ? "Choose a group to message" : "No groups available"} />
-              </div>
-            </SelectTrigger>
-            <SelectContent className="bg-neutral-800 border-neutral-700">
-              {groups.length > 0 ? (
-                <>
-                  {/* Favorites Section */}
-                  {favoriteGroups.length > 0 && (
-                    <>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-yellow-400 border-b border-neutral-700">
-                        ⭐ Favorites
-                      </div>
-                      {groups
-                        .filter(group => favoriteGroups.includes(group.id))
-                        .map((group) => (
-                          <SelectItem
-                            key={group.id}
-                            value={group.id}
-                            className="text-white hover:bg-neutral-700 focus:bg-neutral-700"
-                          >
-                            <div className="flex items-center justify-between w-full">
-                              <div className="flex flex-col items-start">
-                                <div className="flex items-center gap-2">
-                                  <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
-                                  <span className="font-medium">{group.name}</span>
-                                </div>
-                                <span className="text-xs text-gray-400 ml-5">{group.memberCount || 0} members</span>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 hover:bg-neutral-600"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  toggleFavorite(group.id)
-                                }}
-                              >
-                                <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
-                              </Button>
-                            </div>
-                          </SelectItem>
-                        ))
-                      }
-                      <div className="border-b border-neutral-700 my-1" />
-                    </>
-                  )}
+      <CardContent className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "send-now" | "schedule")} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-neutral-800 border-neutral-700">
+            <TabsTrigger value="send-now" className="data-[state=active]:bg-[#05c997] data-[state=active]:text-white">
+              <Send className="h-4 w-4 mr-2" />
+              Send Now
+            </TabsTrigger>
+            <TabsTrigger value="schedule" className="data-[state=active]:bg-[#05c997] data-[state=active]:text-white">
+              <Clock className="h-4 w-4 mr-2" />
+              Schedule
+            </TabsTrigger>
+          </TabsList>
 
-                  {/* All Groups Section */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-gray-400">
-                    All Groups
-                  </div>
-                  {groups.map((group) => (
-                    <SelectItem
-                      key={group.id}
-                      value={group.id}
-                      className="text-white hover:bg-neutral-700 focus:bg-neutral-700"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex flex-col items-start">
-                          <div className="flex items-center gap-2">
-                            {favoriteGroups.includes(group.id) ? (
-                              <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
-                            ) : (
-                              <div className="h-3 w-3" />
-                            )}
-                            <span className="font-medium">{group.name}</span>
-                          </div>
-                          <span className="text-xs text-gray-400 ml-5">{group.memberCount || 0} members</span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 hover:bg-neutral-600"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            toggleFavorite(group.id)
-                          }}
-                        >
-                          {favoriteGroups.includes(group.id) ? (
-                            <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
-                          ) : (
-                            <Star className="h-3 w-3 text-gray-400" />
-                          )}
-                        </Button>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </>
-              ) : (
-                <SelectItem value="no-groups" disabled className="text-gray-400">
-                  No groups available
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-          {errors.group && <p className="text-sm text-red-400">{errors.group}</p>}
-        </div>
-
-        <div className="space-y-1 flex-1">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="message" className="text-gray-300 text-sm">
-              Message
-            </Label>
-            <span className={cn("text-xs", isOverLimit ? "text-red-400" : "text-gray-400")}>{characterCount}/1000</span>
-          </div>
-
-          {/* Text Formatting Toolbar */}
-          <div className="flex items-center gap-1 p-2 border border-neutral-700 rounded-md bg-neutral-800/50">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => formatText('bold')}
-              className="h-8 w-8 p-0 hover:bg-neutral-700 text-gray-400 hover:text-white"
-              disabled={!isConnected}
-            >
-              <Bold className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => formatText('italic')}
-              className="h-8 w-8 p-0 hover:bg-neutral-700 text-gray-400 hover:text-white"
-              disabled={!isConnected}
-            >
-              <Italic className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => formatText('underline')}
-              className="h-8 w-8 p-0 hover:bg-neutral-700 text-gray-400 hover:text-white"
-              disabled={!isConnected}
-            >
-              <Underline className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => formatText('strikethrough')}
-              className="h-8 w-8 p-0 hover:bg-neutral-700 text-gray-400 hover:text-white"
-              disabled={!isConnected}
-            >
-              <Strikethrough className="h-4 w-4" />
-            </Button>
-            <div className="h-4 w-px bg-neutral-600 mx-2" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              className="h-8 w-8 p-0 hover:bg-neutral-700 text-gray-400 hover:text-white"
-              disabled={!isConnected}
-            >
-              <Image className="h-4 w-4" />
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleImageUpload}
-              className="hidden"
-            />
-          </div>
-
-          <Textarea
-            ref={textareaRef}
-            id="message"
-            placeholder="Type your message here..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            className={cn(
-              "min-h-[80px] sm:min-h-[100px] bg-neutral-800 border-neutral-700 text-white placeholder:text-gray-400 resize-none text-sm",
-              errors.message && "border-red-500",
-            )}
-            disabled={!isConnected}
-          />
-
-          {/* Image Previews */}
-          {imagePreviews.length > 0 && (
-            <div className="flex flex-wrap gap-2 p-2 border border-neutral-700 rounded-md bg-neutral-800/20">
-              {imagePreviews.map((preview, index) => (
-                <div key={index} className="relative group">
-                  <img
-                    src={preview}
-                    alt={`Preview ${index + 1}`}
-                    className="w-16 h-16 object-cover rounded border border-neutral-600"
-                  />
+          <TabsContent value="send-now" className="space-y-4 mt-4">
+            {/* Group Selection */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-gray-300">
+                  Select Groups
+                </Label>
+                <div className="flex gap-2">
                   <Button
                     type="button"
-                    variant="destructive"
                     size="sm"
-                    onClick={() => removeImage(index)}
-                    className="absolute -top-2 -right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex justify-between items-center">
-            <div className="text-xs text-gray-400">
-              {uploadedImages.length > 0 && (
-                <span>{uploadedImages.length} image{uploadedImages.length > 1 ? 's' : ''} • </span>
-              )}
-            </div>
-            {(errors.message || errors.images) && (
-              <p className="text-xs text-red-400">{errors.message || errors.images}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-1">
-          {/* Update the button disabled conditions to use selectedGroup */}
-          <Button
-            onClick={handleSendNow}
-            disabled={!isConnected || !message.trim() || !selectedGroup}
-            className="flex-1 bg-[#05c997] hover:bg-[#04b085] text-white transition-all duration-200 hover:scale-105 h-9 text-sm"
-          >
-            <Send className="h-3 w-3 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Send Now</span>
-            <span className="sm:hidden">Send</span>
-          </Button>
-
-          <Dialog open={isScheduleModalOpen} onOpenChange={setIsScheduleModalOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                disabled={!isConnected || !message.trim() || !selectedGroup}
-                className="flex-1 border-neutral-700 hover:bg-neutral-800 text-white transition-all duration-200 hover:scale-105 bg-transparent h-9 text-sm"
-              >
-                <Clock className="h-3 w-3 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Schedule</span>
-                <span className="sm:hidden">Later</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-neutral-900 border-neutral-800 text-white">
-              <DialogHeader>
-                <DialogTitle>{editingMessage ? 'Edit Scheduled Message' : 'Schedule Message'}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                {/* Message Content Section */}
-                <div className="space-y-2">
-                  <Label htmlFor="modal-message">Message Content</Label>
-                  <Textarea
-                    id="modal-message"
-                    placeholder="Type your message here..."
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    className="bg-neutral-800 border-neutral-700 text-white resize-none min-h-[100px]"
-                    maxLength={4096}
-                  />
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-400">
-                      {message.length}/4096 characters
-                    </span>
-                    {errors.message && <p className="text-xs text-red-400">{errors.message}</p>}
-                  </div>
-                </div>
-
-                {/* Group Selection Section */}
-                <div className="space-y-2">
-                  <Label>Select Group</Label>
-                  <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-                    <SelectTrigger className={cn(
-                      "bg-neutral-800 border-neutral-700 text-white",
-                      errors.group && "border-red-500"
-                    )}>
-                      <SelectValue placeholder="Choose a group..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-neutral-800 border-neutral-700">
-                      {groups.map((group) => (
-                        <SelectItem
-                          key={group.id}
-                          value={group.name}
-                          className="text-white hover:bg-neutral-700"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4" />
-                            <span>{group.name}</span>
-                            <span className="text-xs text-gray-400">({group.memberCount} members)</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.group && <p className="text-sm text-red-400">{errors.group}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Select Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal bg-neutral-800 border-neutral-700",
-                          !date && "text-gray-400",
-                          errors.date && "border-red-500",
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {date ? format(date, "PPP") : "Pick a date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-neutral-900 border-neutral-800">
-                      <Calendar
-                        mode="single"
-                        selected={date}
-                        onSelect={setDate}
-                        disabled={(date) => {
-                          const today = new Date()
-                          today.setHours(0, 0, 0, 0)
-                          const selectedDate = new Date(date)
-                          selectedDate.setHours(0, 0, 0, 0)
-                          return selectedDate < today
-                        }}
-                        initialFocus
-                        className="bg-neutral-900"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {errors.date && <p className="text-sm text-red-400">{errors.date}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="time">Select Time</Label>
-                  <Input
-                    id="time"
-                    type="time"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    className={cn("bg-neutral-800 border-neutral-700 text-white", errors.time && "border-red-500")}
-                  />
-                  {errors.time && <p className="text-sm text-red-400">{errors.time}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Recurrence Type</Label>
-                  <Select value={recurrenceType} onValueChange={(value: 'once' | 'weekly') => {
-                    setRecurrenceType(value)
-                    if (value === 'once') {
-                      setSelectedWeekdays([])
-                    }
-                  }}>
-                    <SelectTrigger className="bg-neutral-800 border-neutral-700 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-neutral-800 border-neutral-700">
-                      <SelectItem value="once" className="text-white hover:bg-neutral-700">Send Once</SelectItem>
-                      <SelectItem value="weekly" className="text-white hover:bg-neutral-700">Weekly Recurrence</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {recurrenceType === 'weekly' && (
-                  <div className="space-y-2">
-                    <Label>Select Weekdays</Label>
-                    <div className="grid grid-cols-7 gap-1">
-                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => {
-                        const isSelected = selectedWeekdays.includes(index)
-                        return (
-                          <Button
-                            key={day}
-                            type="button"
-                            size="sm"
-                            variant={isSelected ? "default" : "outline"}
-                            className={cn(
-                              "h-8 text-xs",
-                              isSelected
-                                ? "bg-[#05c997] hover:bg-[#04b085] text-white"
-                                : "border-neutral-600 text-neutral-300 hover:bg-neutral-700"
-                            )}
-                            onClick={() => {
-                              if (isSelected) {
-                                setSelectedWeekdays(prev => prev.filter(d => d !== index))
-                              } else {
-                                setSelectedWeekdays(prev => [...prev, index])
-                              }
-                            }}
-                          >
-                            {day}
-                          </Button>
-                        )
-                      })}
-                    </div>
-                    {errors.weekdays && <p className="text-sm text-red-400">{errors.weekdays}</p>}
-                    <p className="text-xs text-gray-500">Select the days of the week when the message should be sent</p>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="occurrences">Number of Occurrences</Label>
-
-                  <div className="flex items-center space-x-2 mb-3">
-                    <Checkbox
-                      id="infinite"
-                      checked={isInfinite}
-                      onCheckedChange={(checked) => {
-                        setIsInfinite(checked as boolean)
-                        if (checked) {
-                          setOccurrences(1)
-                        }
-                      }}
-                      className="border-neutral-600 data-[state=checked]:bg-[#05c997] data-[state=checked]:border-[#05c997]"
-                    />
-                    <Label htmlFor="infinite" className="text-sm text-gray-300 flex items-center gap-1">
-                      <Infinity className="h-4 w-4" />
-                      Infinite occurrences
-                    </Label>
-                  </div>
-
-                  {!isInfinite && (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="occurrences"
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={occurrences}
-                        onChange={(e) => setOccurrences(Number.parseInt(e.target.value) || 1)}
-                        className={cn("bg-neutral-800 border-neutral-700 text-white", errors.occurrences && "border-red-500")}
-                      />
-                      <span className="text-sm text-gray-400 whitespace-nowrap">times</span>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-gray-500">
-                    {isInfinite
-                      ? "Message will be sent repeatedly until manually stopped"
-                      : recurrenceType === 'weekly'
-                        ? "How many weeks should this pattern repeat? (1-100)"
-                        : "How many times should this message be sent? (1-100)"
-                    }
-                  </p>
-                  {errors.occurrences && <p className="text-sm text-red-400">{errors.occurrences}</p>}
-                </div>
-
-                {errors.datetime && <p className="text-sm text-red-400">{errors.datetime}</p>}
-
-                <div className="flex gap-3 pt-4">
-                  <Button
                     variant="outline"
-                    onClick={() => {
-                      setIsScheduleModalOpen(false)
-                      clearForm()
-                    }}
-                    className="flex-1 border-neutral-700 hover:bg-neutral-800"
+                    onClick={selectAllGroups}
+                    className="h-7 px-2 text-xs border-neutral-700 hover:bg-neutral-800 text-gray-300 hover:text-white"
                   >
-                    Cancel
+                    <Check className="h-3 w-3 mr-1" />
+                    All
                   </Button>
-                  <Button onClick={handleSchedule} className="flex-1 bg-[#05c997] hover:bg-[#04b085]">
-                    {editingMessage ? 'Update Message' : 'Schedule Message'}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={clearAllGroups}
+                    className="h-7 px-2 text-xs border-neutral-700 hover:bg-neutral-800 text-gray-300 hover:text-white"
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Clear
                   </Button>
                 </div>
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
 
-        {!isConnected && (
-          <div className="text-center py-4">
-            <p className="text-sm text-gray-400">Connect to WhatsApp to start sending messages</p>
-          </div>
-        )}
+              {/* Dropdown for group selection */}
+              <Select onValueChange={(value) => toggleGroupSelection(value)}>
+                <SelectTrigger className="bg-neutral-800 border-neutral-700 text-white">
+                  <SelectValue placeholder="Choose groups to send to..." />
+                </SelectTrigger>
+                <SelectContent className="bg-neutral-800 border-neutral-700">
+                  {/* Search input */}
+                  <div className="p-2 border-b border-neutral-700">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search groups..."
+                        value={groupSearchQuery}
+                        onChange={(e) => setGroupSearchQuery(e.target.value)}
+                        className="pl-8 bg-neutral-700 border-neutral-600 text-white placeholder-gray-400 focus:border-[#05c997] h-8"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        autoComplete="off"
+                      />
+                    </div>
+                  </div>
+                  {/* Groups list */}
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredGroups.length > 0 ? (
+                      filteredGroups.map((group) => (
+                        <SelectItem
+                          key={group.id}
+                          value={group.id}
+                          className="text-white hover:bg-neutral-700 focus:bg-neutral-700"
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            <Users className="h-4 w-4 text-gray-400" />
+                            <div className="flex-1">
+                              <span className="font-medium">{group.name}</span>
+                              <span className="text-xs text-gray-400 ml-2">({group.memberCount} members)</span>
+                            </div>
+                            {selectedGroups.includes(group.id) && (
+                              <Check className="h-4 w-4 text-[#05c997]" />
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="p-3 text-center text-gray-400 text-sm">
+                        {groupSearchQuery ? 'No groups found matching your search' : 'No groups available'}
+                      </div>
+                    )}
+                  </div>
+                </SelectContent>
+              </Select>
+
+              {/* Selected groups as tags */}
+              {selectedGroups.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-gray-400">
+                    Selected Groups ({selectedGroups.length})
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedGroups.map((groupId) => {
+                      const group = groups.find(g => g.id === groupId)
+                      if (!group) return null
+                      return (
+                        <Badge
+                          key={groupId}
+                          variant="secondary"
+                          className="bg-[#05c997]/10 text-[#05c997] border border-[#05c997]/20 hover:bg-[#05c997]/20 transition-colors"
+                        >
+                          <Users className="h-3 w-3 mr-1" />
+                          {group.name}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => toggleGroupSelection(groupId)}
+                            className="h-4 w-4 p-0 ml-1 hover:bg-red-500/20 text-gray-400 hover:text-red-400 bg-transparent"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {errors.groups && <p className="text-sm text-red-400">{errors.groups}</p>}
+            </div>
+
+            {/* Message Input */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="message" className="text-sm font-medium text-gray-300">
+                  Message
+                </Label>
+                <span className="text-xs text-gray-400">
+                  {message.length}/4096
+                </span>
+              </div>
+
+              <div className="relative">
+                <Textarea
+                  id="message"
+                  ref={textareaRef}
+                  placeholder="Type your message here..."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className={cn(
+                    "bg-neutral-800 border-neutral-700 text-white resize-none min-h-[120px] pr-12",
+                    errors.message && "border-red-500"
+                  )}
+                  maxLength={4096}
+                />
+
+                {/* Text Formatting Toolbar */}
+                <div className="absolute bottom-2 right-2 flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 hover:bg-neutral-700 text-gray-300 hover:text-white"
+                    onClick={() => formatText('bold')}
+                    title="Bold"
+                  >
+                    <Bold className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 hover:bg-neutral-700 text-gray-300 hover:text-white"
+                    onClick={() => formatText('italic')}
+                    title="Italic"
+                  >
+                    <Italic className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 hover:bg-neutral-700 text-gray-300 hover:text-white"
+                    onClick={() => formatText('underline')}
+                    title="Underline"
+                  >
+                    <Underline className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              {errors.message && <p className="text-sm text-red-400">{errors.message}</p>}
+            </div>
+
+            {/* Image Upload */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-gray-300">
+                  Images
+                </Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-neutral-700 hover:bg-neutral-800 text-white h-7 px-2 text-xs"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Image
+                </Button>
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+
+              {imagePreviews.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {imagePreviews.map((preview, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={preview}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-16 object-cover rounded border border-neutral-700"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        className="absolute -top-1 -right-1 h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => removeImage(index)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {uploadedImages.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="bg-neutral-800 text-gray-300">
+                    {uploadedImages.length} image{uploadedImages.length > 1 ? 's' : ''}
+                  </Badge>
+                </div>
+              )}
+            </div>
+
+            <Separator className="bg-neutral-700" />
+
+            <Button
+              onClick={handleSendNow}
+              disabled={!isConnected || !message.trim() || selectedGroups.length === 0}
+              className="w-full bg-[#05c997] hover:bg-[#04b085] text-white transition-all duration-200 h-10"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Send to {selectedGroups.length} group{selectedGroups.length !== 1 ? 's' : ''}
+            </Button>
+          </TabsContent>
+
+          <TabsContent value="schedule" className="space-y-4 mt-4">
+            {/* Group Selection for Schedule */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-gray-300">
+                  Select Groups
+                </Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={selectAllGroups}
+                    className="h-7 px-2 text-xs border-neutral-700 hover:bg-neutral-800 text-gray-300 hover:text-white"
+                  >
+                    <Check className="h-3 w-3 mr-1" />
+                    All
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={clearAllGroups}
+                    className="h-7 px-2 text-xs border-neutral-700 hover:bg-neutral-800 text-gray-300 hover:text-white"
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Clear
+                  </Button>
+                </div>
+              </div>
+
+              {/* Dropdown for group selection */}
+              <Select onValueChange={(value) => toggleGroupSelection(value)}>
+                <SelectTrigger className="bg-neutral-800 border-neutral-700 text-white">
+                  <SelectValue placeholder="Choose groups to send to..." />
+                </SelectTrigger>
+                <SelectContent className="bg-neutral-800 border-neutral-700">
+                  {/* Search input */}
+                  <div className="p-2 border-b border-neutral-700">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search groups..."
+                        value={groupSearchQuery}
+                        onChange={(e) => setGroupSearchQuery(e.target.value)}
+                        className="pl-8 bg-neutral-700 border-neutral-600 text-white placeholder-gray-400 focus:border-[#05c997] h-8"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        autoComplete="off"
+                      />
+                    </div>
+                  </div>
+                  {/* Groups list */}
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredGroups.length > 0 ? (
+                      filteredGroups.map((group) => (
+                        <SelectItem
+                          key={group.id}
+                          value={group.id}
+                          className="text-white hover:bg-neutral-700 focus:bg-neutral-700"
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            <Users className="h-4 w-4 text-gray-400" />
+                            <div className="flex-1">
+                              <span className="font-medium">{group.name}</span>
+                              <span className="text-xs text-gray-400 ml-2">({group.memberCount} members)</span>
+                            </div>
+                            {selectedGroups.includes(group.id) && (
+                              <Check className="h-4 w-4 text-[#05c997]" />
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="p-3 text-center text-gray-400 text-sm">
+                        {groupSearchQuery ? 'No groups found matching your search' : 'No groups available'}
+                      </div>
+                    )}
+                  </div>
+                </SelectContent>
+              </Select>
+
+              {/* Selected groups as tags */}
+              {selectedGroups.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-gray-400">
+                    Selected Groups ({selectedGroups.length})
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedGroups.map((groupId) => {
+                      const group = groups.find(g => g.id === groupId)
+                      if (!group) return null
+                      return (
+                        <Badge
+                          key={groupId}
+                          variant="secondary"
+                          className="bg-[#05c997]/10 text-[#05c997] border border-[#05c997]/20 hover:bg-[#05c997]/20 transition-colors"
+                        >
+                          <Users className="h-3 w-3 mr-1" />
+                          {group.name}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => toggleGroupSelection(groupId)}
+                            className="h-4 w-4 p-0 ml-1 hover:bg-red-500/20 text-gray-400 hover:text-red-400 bg-transparent"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {errors.groups && <p className="text-sm text-red-400">{errors.groups}</p>}
+            </div>
+
+            {/* Message Input for Schedule */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="schedule-message" className="text-sm font-medium text-gray-300">
+                  Message
+                </Label>
+                <span className="text-xs text-gray-400">
+                  {message.length}/4096
+                </span>
+              </div>
+
+              <Textarea
+                id="schedule-message"
+                placeholder="Type your scheduled message here..."
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className={cn(
+                  "bg-neutral-800 border-neutral-700 text-white resize-none min-h-[100px]",
+                  errors.message && "border-red-500"
+                )}
+                maxLength={4096}
+              />
+              {errors.message && <p className="text-sm text-red-400">{errors.message}</p>}
+            </div>
+
+            {/* Schedule Settings */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="schedule-date" className="text-sm font-medium text-gray-300">
+                  Date
+                </Label>
+                <Input
+                  id="schedule-date"
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className={cn(
+                    "bg-neutral-800 border-neutral-700 text-white",
+                    errors.date && "border-red-500"
+                  )}
+                />
+                {errors.date && <p className="text-sm text-red-400">{errors.date}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="schedule-time" className="text-sm font-medium text-gray-300">
+                  Time
+                </Label>
+                <Input
+                  id="schedule-time"
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className={cn(
+                    "bg-neutral-800 border-neutral-700 text-white",
+                    errors.time && "border-red-500"
+                  )}
+                />
+                {errors.time && <p className="text-sm text-red-400">{errors.time}</p>}
+              </div>
+            </div>
+
+            {/* Recurrence Settings */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium text-gray-300">
+                Recurrence
+              </Label>
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={recurrenceType === 'once' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setRecurrenceType('once')}
+                  className={cn(
+                    recurrenceType === 'once'
+                      ? "bg-[#05c997] hover:bg-[#04b085] text-white"
+                      : "border-neutral-700 hover:bg-neutral-800 text-gray-300 hover:text-white"
+                  )}
+                >
+                  Send Once
+                </Button>
+                <Button
+                  type="button"
+                  variant={recurrenceType === 'weekly' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setRecurrenceType('weekly')}
+                  className={cn(
+                    recurrenceType === 'weekly'
+                      ? "bg-[#05c997] hover:bg-[#04b085] text-white"
+                      : "border-neutral-700 hover:bg-neutral-800 text-gray-300 hover:text-white"
+                  )}
+                >
+                  Weekly
+                </Button>
+              </div>
+
+              {recurrenceType === 'weekly' && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label className="text-sm text-gray-300">Select Days</Label>
+                    <div className="grid grid-cols-7 gap-1">
+                      {weekdays.map((day) => (
+                        <Button
+                          key={day.value}
+                          type="button"
+                          size="sm"
+                          variant={selectedWeekdays.includes(day.value) ? 'default' : 'outline'}
+                          className={cn(
+                            "h-8 text-xs",
+                            selectedWeekdays.includes(day.value)
+                              ? "bg-[#05c997] hover:bg-[#04b085] text-white"
+                              : "border-neutral-600 text-gray-300 hover:bg-neutral-700 hover:text-white"
+                          )}
+                          onClick={() => {
+                            if (selectedWeekdays.includes(day.value)) {
+                              setSelectedWeekdays(prev => prev.filter(d => d !== day.value))
+                            } else {
+                              setSelectedWeekdays(prev => [...prev, day.value])
+                            }
+                          }}
+                        >
+                          {day.short}
+                        </Button>
+                      ))}
+                    </div>
+                    {errors.weekdays && <p className="text-sm text-red-400">{errors.weekdays}</p>}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm text-gray-300">Occurrences</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={isInfinite ? '' : occurrences}
+                          onChange={(e) => setOccurrences(parseInt(e.target.value) || 1)}
+                          disabled={isInfinite}
+                          className="bg-neutral-800 border-neutral-700 text-white"
+                        />
+                        <Button
+                          type="button"
+                          variant={isInfinite ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setIsInfinite(!isInfinite)}
+                          className={cn(
+                            isInfinite
+                              ? "bg-[#05c997] hover:bg-[#04b085] text-white"
+                              : "border-neutral-700 hover:bg-neutral-800 text-gray-300 hover:text-white"
+                          )}
+                        >
+                          ∞
+                        </Button>
+                      </div>
+                      {errors.occurrences && <p className="text-sm text-red-400">{errors.occurrences}</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Separator className="bg-neutral-700" />
+
+            <Button
+              onClick={handleSchedule}
+              disabled={!isConnected || !message.trim() || selectedGroups.length === 0 || !scheduleDate || !scheduleTime}
+              className="w-full bg-[#05c997] hover:bg-[#04b085] text-white transition-all duration-200 h-10"
+            >
+              <Clock className="h-4 w-4 mr-2" />
+              Schedule for {selectedGroups.length} group{selectedGroups.length !== 1 ? 's' : ''}
+            </Button>
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   )

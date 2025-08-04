@@ -67,5 +67,18 @@
     "lastAttempt": "2025-08-03T10:00:00.000Z",
     "errorMessage": "Group not found",
     "imagePaths": []
+  },
+  {
+    "id": "1754290544835",
+    "groupName": "TEST_WA_BOT",
+    "message": "hi scheduled test",
+    "cron": "57 7 4 8 *",
+    "description": "",
+    "createdAt": "2025-08-04T06:55:44.835Z",
+    "createdBy": "447722559905@c.us",
+    "imagePaths": [],
+    "status": "sent",
+    "lastAttempt": "2025-08-04T06:57:02.104Z",
+    "errorMessage": null
   }
 ]
